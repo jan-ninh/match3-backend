@@ -9,9 +9,20 @@ export const app = express();
 app.set('trust proxy', 1);
 app.use(express.json());
 
+const allowedOrigins = ['http://localhost:5173', 'https://match3-frontend.onrender.com'];
+
 app.use(
   cors({
-    origin: 'http://localhost:5173',
+    origin: (origin, callback) => {
+      // allow server-to-server / curl / health checks
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error('Not allowed by CORS'));
+    },
   }),
 );
 
