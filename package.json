@@ -4,8 +4,14 @@
   "description": "Match-3 backend (WBS-style TS scaffold)",
   "main": "dist/server.js",
   "type": "module",
+  "imports": {
+    "#db": {
+      "development": "./src/db/index.ts",
+      "default": "./dist/db/index.js"
+    }
+  },
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "node --env-file=.env --watch --conditions development src/app.ts",
     "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "tsc",
     "prestart": "npm run build",
@@ -36,8 +42,14 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/mongoose": "^5.11.96",
-    "@types/node": "^24.0.14",
+    "@types/node": "^24.10.10",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
     "tsx": "^4.20.5",
-    "typescript": "^5.8.3"
-  }
+    "typescript": "^5.9.3"
+  },
+  "bugs": {
+    "url": "https://github.com/jan-ninh/match3-backend/issues"
+  },
+  "homepage": "https://github.com/jan-ninh/match3-backend#readme"
 }
