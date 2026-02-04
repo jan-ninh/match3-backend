@@ -15,7 +15,7 @@
     "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "tsc",
     "prestart": "npm run build",
-    "start": "node dist/server.js",
+    "start": "node --env-file=.env dist/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
