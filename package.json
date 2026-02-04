@@ -11,7 +11,7 @@
     }
   },
   "scripts": {
-    "dev": "node --env-file=.env --watch --conditions development src/app.ts",
+    "dev": "node --env-file=.env --watch --conditions development src/server.ts",
     "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "tsc",
     "prestart": "npm run build",
