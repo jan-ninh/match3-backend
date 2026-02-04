@@ -1,13 +1,11 @@
 import express from 'express';
-import { routes } from './routes/index.ts';
-import { connectDB } from '#db';
-import { notFoundHandler } from './middlewares/notFoundHandler.ts';
-import { errorHandler } from './middlewares/errorHandler.ts';
 import cors from 'cors';
 
-await connectDB();
+import { routes } from './routes/index.ts';
+import { notFoundHandler } from './middlewares/notFoundHandler.ts';
+import { errorHandler } from './middlewares/errorHandler.ts';
+
 export const app = express();
-const port = 3000;
 
 app.set('trust proxy', 1);
 app.use(express.json());
@@ -17,21 +15,16 @@ const allowedOrigins = ['http://localhost:5173', 'https://match3-frontend.onrend
 app.use(
   cors({
     origin: (origin, callback) => {
-      // allow server-to-server / curl / health checks
+      // allow server-to-server / health checks
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+      if (allowedOrigins.includes(origin)) return callback(null, true);
 
       return callback(new Error('Not allowed by CORS'));
     },
   }),
 );
-// for test
-app.get('/', (req, res) => {
-  res.send('Hello World');
-});
+
 app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   next();
@@ -41,4 +34,3 @@ app.use(routes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
-app.listen(port, () => console.log(`\x1b[34mMain app listening at http://localhost:${port}\x1b[0m`));
