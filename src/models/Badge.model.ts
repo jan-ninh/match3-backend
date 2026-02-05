@@ -1,26 +1,18 @@
-// src/middlewares/validateZod.ts
-import type { RequestHandler } from 'express';
-import type { ParamsDictionary } from 'express-serve-static-core';
-import type { ZodSchema } from 'zod';
+// src/models/Badge.model.ts
+import mongoose, { Schema, Document, Model } from 'mongoose';
 
-export const validateBodyZod =
-  (schema: ZodSchema): RequestHandler =>
-  (req, res, next) => {
-    const result = schema.safeParse(req.body);
-    if (!result.success) {
-      return res.status(400).json({ error: 'Invalid body', issues: result.error.format() });
-    }
-    req.body = result.data;
-    next();
-  };
+export interface IBadge extends Document {
+  key: string; // e.g. first_win, two_wins
+  title: string;
+  description: string;
+  icon?: string;
+}
 
-export const validateParamsZod =
-  <T extends ParamsDictionary>(schema: ZodSchema): RequestHandler<T> =>
-  (req, res, next) => {
-    const result = schema.safeParse(req.params);
-    if (!result.success) {
-      return res.status(400).json({ error: 'Invalid params', issues: result.error.format() });
-    }
-    req.params = result.data as T;
-    next();
-  };
+const badgeSchema = new Schema<IBadge>({
+  key: { type: String, required: true, unique: true },
+  title: { type: String, required: true },
+  description: { type: String, required: true },
+  icon: { type: String },
+});
+
+export const Badge: Model<IBadge> = mongoose.model<IBadge>('Badge', badgeSchema);
