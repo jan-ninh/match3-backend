@@ -1,5 +1,6 @@
-import type { ErrorRequestHandler } from "express";
-import { isHttpError } from "../utils/httpError.ts";
+// src/middlewares/errorHandler.ts
+import type { ErrorRequestHandler } from 'express';
+import { isHttpError } from '../utils/httpError.ts';
 
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (isHttpError(err)) {
@@ -10,9 +11,9 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     return;
   }
 
-  console.error("[error]", err);
+  console.error('[error]', err);
 
   res.status(500).json({
-    error: "Internal Server Error",
+    error: 'Internal Server Error',
   });
 };
