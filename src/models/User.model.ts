@@ -28,6 +28,7 @@ export interface IUser extends Document {
   avatar: 'default.png' | 'avatar1.png' | 'avatar2.png' | 'avatar3.png';
   powers: Powers;
   totalScore: number;
+  hearts: number;
   progress: Map<string, StageProgress>; // stage1, stage2, ..., stage12
   badges: BadgeProgress[];
   createdAt: Date;
@@ -69,6 +70,7 @@ const userSchema = new Schema<IUser>(
     avatar: { type: String, enum: ['default.png', 'avatar1.png', 'avatar2.png', 'avatar3.png'], default: 'default.png' },
     powers: { type: powersSchema, default: () => ({ bomb: 0, rocket: 0, extraTime: 0 }) },
     totalScore: { type: Number, default: 0, index: true },
+    hearts: { type: Number, default: 3, min: 0 },
     progress: { type: Map, of: stageProgressSchema, default: {} },
     badges: { type: [badgeProgressSchema], default: [] },
   },

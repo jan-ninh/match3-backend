@@ -37,7 +37,7 @@ export const login: RequestHandler = async (req, res, next) => {
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
     // return minimal profile; client can store userId (beware: no token)
-    res.json({ id: user._id, email: user.email, username: user.username, avatar: user.avatar, totalScore: user.totalScore });
+    res.json({ id: user._id, email: user.email, username: user.username, avatar: user.avatar, totalScore: user.totalScore, hearts: user.hearts });
   } catch (err) {
     next(err);
   }

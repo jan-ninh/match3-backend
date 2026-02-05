@@ -110,3 +110,49 @@ function checkAndAwardBadges(user: any) {
     user.badges.push({ badgeKey: 'specialEvent', achievedAt: new Date() });
   }
 }
+
+export const loseGame: RequestHandler = async (req, res, next) => {
+  try {
+    const { id } = req.params as unknown as { id: string };
+
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Decrease hearts by 1 (min 0)
+    if (user.hearts > 0) {
+      user.hearts--;
+    }
+
+    await user.save();
+
+    res.json({
+      message: 'Game lost, heart decreased',
+      hearts: user.hearts,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const abandonGame: RequestHandler = async (req, res, next) => {
+  try {
+    const { id } = req.params as unknown as { id: string };
+
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Decrease hearts by 1 (min 0)
+    if (user.hearts > 0) {
+      user.hearts--;
+    }
+
+    await user.save();
+
+    res.json({
+      message: 'Game abandoned, heart decreased',
+      hearts: user.hearts,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
