@@ -2,8 +2,7 @@
 import express from 'express';
 import cors from 'cors';
 import { routes } from './routes/index.ts';
-import { notFoundHandler } from './middlewares/notFoundHandler.ts';
-import { errorHandler } from './middlewares/errorHandler.ts';
+import { notFoundHandler, errorHandler } from '#middlewares';
 
 export const app = express();
 

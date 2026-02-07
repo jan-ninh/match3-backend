@@ -27,7 +27,7 @@ interface ActiveStageRun {
   stageSelectedBoosters: Powers;
 }
 
-export interface IUser extends Document {
+interface IUser {
   email: string;
   username: string;
   password: string;
@@ -43,6 +43,7 @@ export interface IUser extends Document {
   activeStageRun?: ActiveStageRun;
   createdAt: Date;
   updatedAt: Date;
+  lastHeartRefillAt?: Date;
 }
 
 const powersSchema = new Schema<Powers>(
@@ -96,6 +97,7 @@ const userSchema = new Schema<IUser>(
     gamesWon: { type: Number, default: 0 },
     gamesLost: { type: Number, default: 0 },
     activeStageRun: { type: activeStageRunSchema },
+    lastHeartRefillAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
