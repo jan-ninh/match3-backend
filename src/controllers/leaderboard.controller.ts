@@ -1,6 +1,6 @@
 // src/controllers/leaderboard.controller.ts
 import type { RequestHandler } from 'express';
-import { LeaderboardEntry } from '../models/Leaderboard.model.ts';
+import { LeaderboardEntry } from '#models';
 
 export const top10: RequestHandler = async (_req, res, next) => {
   try {

@@ -1,8 +1,6 @@
 // src/controllers/game.controller.ts
 import type { RequestHandler } from 'express';
-import { User } from '../models/User.model.ts';
-import { LeaderboardEntry } from '../models/Leaderboard.model.ts';
-import type { PowerKey } from '../models/User.model.ts';
+import { User, LeaderboardEntry, type PowerKey } from '#models';
 
 const BASE_POINTS = 800; // first time
 const REPLAY_POINTS = 400; // subsequent times
@@ -197,12 +195,12 @@ export const loseGame: RequestHandler = async (req, res, next) => {
       user.powers.bomb -= user.activeStageRun.stageSelectedBoosters.bomb;
       user.powers.rocket -= user.activeStageRun.stageSelectedBoosters.rocket;
       user.powers.extraTime -= user.activeStageRun.stageSelectedBoosters.extraTime;
-      
+
       // Ensure no negative values
       user.powers.bomb = Math.max(0, user.powers.bomb);
       user.powers.rocket = Math.max(0, user.powers.rocket);
       user.powers.extraTime = Math.max(0, user.powers.extraTime);
-      
+
       user.activeStageRun = undefined;
     }
 
@@ -250,12 +248,12 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
       user.powers.bomb -= user.activeStageRun.stageSelectedBoosters.bomb;
       user.powers.rocket -= user.activeStageRun.stageSelectedBoosters.rocket;
       user.powers.extraTime -= user.activeStageRun.stageSelectedBoosters.extraTime;
-      
+
       // Ensure no negative values
       user.powers.bomb = Math.max(0, user.powers.bomb);
       user.powers.rocket = Math.max(0, user.powers.rocket);
       user.powers.extraTime = Math.max(0, user.powers.extraTime);
-      
+
       user.activeStageRun = undefined;
     }
 

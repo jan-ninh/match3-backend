@@ -1,8 +1,8 @@
 // src/routes/user.routes.ts
 import { Router } from 'express';
-import { getProfile, updateAvatar, updatePowers } from '../controllers/user.controller.ts';
+import { getProfile, updateAvatar, updatePowers } from '#controllers';
 import { z } from 'zod';
-import { validateBodyZod, validateParamsZod } from '../middlewares/validateZod.ts';
+import { validateBodyZod, validateParamsZod } from '#middlewares';
 
 const router = Router();
 

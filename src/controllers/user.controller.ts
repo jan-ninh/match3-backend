@@ -1,6 +1,6 @@
 // src/controllers/user.controller.ts
 import type { RequestHandler } from 'express';
-import { User } from '../models/User.model.ts';
+import { User } from '#models';
 import mongoose from 'mongoose';
 
 export const getProfile: RequestHandler = async (req, res, next) => {

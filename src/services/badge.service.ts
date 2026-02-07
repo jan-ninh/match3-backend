@@ -1,5 +1,5 @@
 // src/services/badge.service.ts
-import { User } from '../models/User.model.ts';
+import { User } from '#models';
 // import { Badge } from '../models/Badge.model.ts';
 import mongoose from 'mongoose';
 

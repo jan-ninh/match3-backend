@@ -1,9 +1,7 @@
 // src/controllers/auth.controller.ts
 import type { RequestHandler } from 'express';
-import { User } from '../models/User.model.ts';
-import { hashPassword, comparePassword } from '../utils/hash.ts';
-
-import mongoose from 'mongoose';
+import { User } from '#models';
+import { hashPassword, comparePassword } from '#utils';
 
 export const register: RequestHandler = async (req, res, next) => {
   try {
