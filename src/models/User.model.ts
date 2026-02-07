@@ -21,6 +21,12 @@ export interface BadgeProgress {
   achievedAt: Date;
 }
 
+interface ActiveStageRun {
+  stageId: string;
+  boosterSnapshot: Powers;
+  stageSelectedBoosters: Powers;
+}
+
 export interface IUser extends Document {
   email: string;
   username: string;
@@ -31,6 +37,10 @@ export interface IUser extends Document {
   hearts: number;
   progress: Map<string, StageProgress>; // stage1, stage2, ..., stage12
   badges: BadgeProgress[];
+  gamesPlayed: number;
+  gamesWon: number;
+  gamesLost: number;
+  activeStageRun?: ActiveStageRun;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +50,15 @@ const powersSchema = new Schema<Powers>(
     bomb: { type: Number, default: 0 },
     rocket: { type: Number, default: 0 },
     extraTime: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
+const activeStageRunSchema = new Schema<ActiveStageRun>(
+  {
+    stageId: { type: String, required: true },
+    boosterSnapshot: { type: powersSchema, required: true },
+    stageSelectedBoosters: { type: powersSchema, required: true },
   },
   { _id: false },
 );
@@ -73,6 +92,10 @@ const userSchema = new Schema<IUser>(
     hearts: { type: Number, default: 3, min: 0 },
     progress: { type: Map, of: stageProgressSchema, default: {} },
     badges: { type: [badgeProgressSchema], default: [] },
+    gamesPlayed: { type: Number, default: 0 },
+    gamesWon: { type: Number, default: 0 },
+    gamesLost: { type: Number, default: 0 },
+    activeStageRun: { type: activeStageRunSchema },
   },
   { timestamps: true },
 );

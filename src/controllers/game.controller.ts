@@ -7,6 +7,56 @@ import type { PowerKey } from '../models/User.model.ts';
 const BASE_POINTS = 800; // first time
 const REPLAY_POINTS = 400; // subsequent times
 
+export const startStage: RequestHandler = async (req, res, next) => {
+  try {
+    const { id, stageNumber } = req.params as unknown as { id: string; stageNumber: string };
+    const stageNum = parseInt(stageNumber, 10);
+    const { stageSelectedBoosters } = req.body as { stageSelectedBoosters?: Record<PowerKey, number> };
+
+    const stageId = `stage${stageNum}`;
+
+    // 1. Get user
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // 2. Check if stage is unlocked
+    if (stageNum > 1) {
+      const prevStageKey = `stage${stageNum - 1}`;
+      const prevProgress = user.progress.get(prevStageKey);
+      if (!prevProgress?.completed) {
+        return res.status(403).json({ error: 'Previous stage not completed' });
+      }
+    }
+
+    // 3. Take snapshot of current boosters
+    const boosterSnapshot = { ...user.powers };
+
+    // 4. Validate and add stage-selected boosters
+    const stageBoosters = stageSelectedBoosters || { bomb: 0, rocket: 0, extraTime: 0 };
+    if (stageBoosters.bomb && stageBoosters.bomb > 0) user.powers.bomb += stageBoosters.bomb;
+    if (stageBoosters.rocket && stageBoosters.rocket > 0) user.powers.rocket += stageBoosters.rocket;
+    if (stageBoosters.extraTime && stageBoosters.extraTime > 0) user.powers.extraTime += stageBoosters.extraTime;
+
+    // 5. Store active stage run
+    user.activeStageRun = {
+      stageId,
+      boosterSnapshot,
+      stageSelectedBoosters: stageBoosters as any,
+    };
+
+    await user.save();
+
+    res.json({
+      message: 'Stage started',
+      stage: stageId,
+      boosters: user.powers,
+      activeStageRun: user.activeStageRun,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const completeStage: RequestHandler = async (req, res, next) => {
   try {
     const { id, stageNumber } = req.params as unknown as { id: string; stageNumber: string };
@@ -55,10 +105,17 @@ export const completeStage: RequestHandler = async (req, res, next) => {
     // 8. Check badges
     checkAndAwardBadges(user);
 
-    // 9. Save user
+    // 9. Log game as won
+    user.gamesPlayed++;
+    user.gamesWon++;
+
+    // 10. Commit: Clear active stage run (WIN = keep boosters as-is)
+    user.activeStageRun = undefined;
+
+    // 11. Save user
     await user.save();
 
-    // 10. Update leaderboard
+    // 12. Update leaderboard
     await LeaderboardEntry.findOneAndUpdate({ userId: user._id }, { username: user.username, totalScore: user.totalScore }, { upsert: true });
 
     res.json({
@@ -114,6 +171,7 @@ function checkAndAwardBadges(user: any) {
 export const loseGame: RequestHandler = async (req, res, next) => {
   try {
     const { id } = req.params as unknown as { id: string };
+    const { usedPower } = req.body as { usedPower?: PowerKey };
 
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -123,11 +181,40 @@ export const loseGame: RequestHandler = async (req, res, next) => {
       user.hearts--;
     }
 
+    // Handle power usage
+    if (usedPower && user.powers[usedPower] > 0) {
+      user.powers[usedPower]--;
+    } else if (usedPower) {
+      return res.status(400).json({ error: `No ${usedPower} available` });
+    }
+
+    // Log game loss
+    user.gamesPlayed++;
+    user.gamesLost++;
+
+    // Rollback: Only remove stage-selected boosters, keep previous booster usage as-is
+    if (user.activeStageRun) {
+      user.powers.bomb -= user.activeStageRun.stageSelectedBoosters.bomb;
+      user.powers.rocket -= user.activeStageRun.stageSelectedBoosters.rocket;
+      user.powers.extraTime -= user.activeStageRun.stageSelectedBoosters.extraTime;
+      
+      // Ensure no negative values
+      user.powers.bomb = Math.max(0, user.powers.bomb);
+      user.powers.rocket = Math.max(0, user.powers.rocket);
+      user.powers.extraTime = Math.max(0, user.powers.extraTime);
+      
+      user.activeStageRun = undefined;
+    }
+
     await user.save();
 
     res.json({
-      message: 'Game lost, heart decreased',
+      message: 'Game lost, heart decreased and stage-selected boosters removed',
       hearts: user.hearts,
+      powers: user.powers,
+      gamesPlayed: user.gamesPlayed,
+      gamesWon: user.gamesWon,
+      gamesLost: user.gamesLost,
     });
   } catch (err) {
     next(err);
@@ -137,6 +224,7 @@ export const loseGame: RequestHandler = async (req, res, next) => {
 export const abandonGame: RequestHandler = async (req, res, next) => {
   try {
     const { id } = req.params as unknown as { id: string };
+    const { usedPower } = req.body as { usedPower?: PowerKey };
 
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -146,11 +234,40 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
       user.hearts--;
     }
 
+    // Handle power usage
+    if (usedPower && user.powers[usedPower] > 0) {
+      user.powers[usedPower]--;
+    } else if (usedPower) {
+      return res.status(400).json({ error: `No ${usedPower} available` });
+    }
+
+    // Log game as abandoned (counts as loss)
+    user.gamesPlayed++;
+    user.gamesLost++;
+
+    // Rollback: Only remove stage-selected boosters, keep previous booster usage as-is
+    if (user.activeStageRun) {
+      user.powers.bomb -= user.activeStageRun.stageSelectedBoosters.bomb;
+      user.powers.rocket -= user.activeStageRun.stageSelectedBoosters.rocket;
+      user.powers.extraTime -= user.activeStageRun.stageSelectedBoosters.extraTime;
+      
+      // Ensure no negative values
+      user.powers.bomb = Math.max(0, user.powers.bomb);
+      user.powers.rocket = Math.max(0, user.powers.rocket);
+      user.powers.extraTime = Math.max(0, user.powers.extraTime);
+      
+      user.activeStageRun = undefined;
+    }
+
     await user.save();
 
     res.json({
-      message: 'Game abandoned, heart decreased',
+      message: 'Game abandoned, heart decreased and stage-selected boosters removed',
       hearts: user.hearts,
+      powers: user.powers,
+      gamesPlayed: user.gamesPlayed,
+      gamesWon: user.gamesWon,
+      gamesLost: user.gamesLost,
     });
   } catch (err) {
     next(err);

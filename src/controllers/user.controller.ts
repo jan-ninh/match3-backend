@@ -19,6 +19,9 @@ export const getProfile: RequestHandler = async (req, res, next) => {
       totalScore: user.totalScore,
       progress,
       badges: user.badges,
+      gamesPlayed: user.gamesPlayed,
+      gamesWon: user.gamesWon,
+      gamesLost: user.gamesLost,
     });
   } catch (err) {
     next(err);
