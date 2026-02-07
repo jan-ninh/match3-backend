@@ -31,7 +31,7 @@ interface IUser {
   email: string;
   username: string;
   password: string;
-  avatar: 'default.png' | 'avatar1.png' | 'avatar2.png' | 'avatar3.png';
+  avatar: 'default.svg' | 'avatar1.svg' | 'avatar2.svg' | 'avatar3.svg';
   powers: Powers;
   totalScore: number;
   hearts: number;
@@ -87,7 +87,7 @@ const userSchema = new Schema<IUser>(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, match: [/^\S+@\S+\.\S+$/, 'Email is not valid'] },
     username: { type: String, required: true, unique: true, trim: true },
     password: { type: String, required: true },
-    avatar: { type: String, enum: ['default.png', 'avatar1.png', 'avatar2.png', 'avatar3.png'], default: 'default.png' },
+    avatar: { type: String, enum: ['default.svg', 'avatar1.svg', 'avatar2.svg', 'avatar3.svg'], default: 'default.svg' },
     powers: { type: powersSchema, default: () => ({ bomb: 0, rocket: 0, extraTime: 0 }) },
     totalScore: { type: Number, default: 0, index: true },
     hearts: { type: Number, default: 3, min: 0 },
