@@ -7,9 +7,9 @@ import mongoose from 'mongoose';
   Badge keys we'll use (examples):
   - first_win
   - two_wins_in_row
-  - reach_500_points
+  - reach_1000_points
   - collect_10_powers_total (example)
-  - complete_stage_1 (example)
+  - complete_stage_6 (example)
   - loyal_player (e.g., play 7 different days)
 */
 
