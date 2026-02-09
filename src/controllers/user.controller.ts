@@ -1,6 +1,6 @@
 // src/controllers/user.controller.ts
 import type { RequestHandler } from 'express';
-import { User } from '../models/User.model.ts';
+import { User } from '#models';
 import mongoose from 'mongoose';
 
 export const getProfile: RequestHandler = async (req, res, next) => {
@@ -19,6 +19,9 @@ export const getProfile: RequestHandler = async (req, res, next) => {
       totalScore: user.totalScore,
       progress,
       badges: user.badges,
+      gamesPlayed: user.gamesPlayed,
+      gamesWon: user.gamesWon,
+      gamesLost: user.gamesLost,
     });
   } catch (err) {
     next(err);
@@ -30,7 +33,7 @@ export const updateAvatar: RequestHandler = async (req, res, next) => {
     const { id } = req.params;
     const { avatar } = req.body as { avatar: string };
 
-    const validAvatars = ['default.png', 'avatar1.png', 'avatar2.png', 'avatar3.png'];
+    const validAvatars = ['default.svg', 'avatar1.svg', 'avatar2.svg', 'avatar3.svg'];
     if (!validAvatars.includes(avatar)) {
       return res.status(400).json({ error: 'Invalid avatar' });
     }

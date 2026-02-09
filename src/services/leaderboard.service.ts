@@ -1,5 +1,5 @@
 // src/services/leaderboard.service.ts
-import { LeaderboardEntry } from '../models/Leaderboard.model.ts';
+import { LeaderboardEntry } from '#models';
 import mongoose from 'mongoose';
 
 export async function upsertLeaderboard(userId: mongoose.Types.ObjectId, totalScore: number) {

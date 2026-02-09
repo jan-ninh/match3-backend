@@ -5,10 +5,35 @@
   "main": "dist/server.js",
   "type": "module",
   "imports": {
-    "#db": {
-      "development": "./src/db/index.ts",
-      "default": "./dist/db/index.js"
-    }
+    "#controllers": {
+      "development": "./src/controllers/index.ts",
+      "default": "./dist/controllers/index.js"
+    },
+    "#models": {
+      "development": "./src/models/index.ts",
+      "default": "./dist/models/index.js"
+    },
+    "#schemas": {
+      "development": "./src/schemas/index.ts",
+      "default": "./dist/schemas/index.js"
+    },
+    "#services": {
+      "development": "./src/services/index.ts",
+      "default": "./dist/services/index.js"
+    },
+    "#routes": {
+      "development": "./src/routes/index.ts",
+      "default": "./dist/routes/index.js"
+    },
+    "#utils": {
+      "development": "./src/utils/index.ts",
+      "default": "./dist/utils/index.js"
+    },
+    "#middlewares": {
+      "development": "./src/middlewares/index.ts",
+      "default": "./dist/middlewares/index.js"
+    },
+    "#types": "./src/types/index.ts"
   },
   "scripts": {
     "dev": "node --env-file=.env --watch --conditions development src/server.ts",
@@ -34,6 +59,7 @@
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.1.5",
+    "node-schedule": "^2.1.1",
     "tr46": "^6.0.0",
     "zod": "^4.3.6"
   },
@@ -44,6 +70,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/mongoose": "^5.11.96",
     "@types/node": "^24.10.10",
+    "@types/node-schedule": "^2.1.8",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.20.5",
