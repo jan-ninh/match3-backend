@@ -5,7 +5,6 @@ import { LeaderboardEntry } from '#models';
 export const top10: RequestHandler = async (_req, res, next) => {
   try {
     const top10Users = await LeaderboardEntry.find().sort({ totalScore: -1 }).limit(10).select('username totalScore');
-
     res.json({ top10: top10Users });
   } catch (err) {
     next(err);
