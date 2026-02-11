@@ -33,7 +33,7 @@ export const updateAvatar: RequestHandler = async (req, res, next) => {
     const { id } = req.params;
     const { avatar } = req.body as { avatar: string };
 
-    const validAvatars = ['default.svg', 'avatar1.svg', 'avatar2.svg', 'avatar3.svg'];
+    const validAvatars = ['default.png', 'avatar1.png', 'avatar2.png', 'avatar3.png', 'avatar4.png', 'avatar5.png', 'avatar6.png'];
     if (!validAvatars.includes(avatar)) {
       return res.status(400).json({ error: 'Invalid avatar' });
     }

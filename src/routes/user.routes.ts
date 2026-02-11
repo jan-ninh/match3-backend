@@ -7,7 +7,7 @@ import { validateBodyZod, validateParamsZod } from '#middlewares';
 const router = Router();
 
 const avatarSchema = z.object({
-  avatar: z.enum(['default.png', 'avatar1.png', 'avatar2.png', 'avatar3.png']),
+  avatar: z.enum(['default.png', 'avatar1.png', 'avatar2.png', 'avatar3.png', 'avatar4.png', 'avatar5.png', 'avatar6.png']),
 });
 
 const idParam = z.object({ id: z.string() });
