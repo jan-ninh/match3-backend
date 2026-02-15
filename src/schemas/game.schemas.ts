@@ -2,7 +2,7 @@
 import { z } from 'zod';
 
 export const completeStageBodySchema = z.object({
-  usedPower: z.enum(['bomb', 'rocket', 'extraShuffle']).optional(),
+  usedPower: z.enum(['bomb', 'laser', 'extraShuffle']).optional(),
 });
 
 export const completeStageParamsSchema = z.object({
