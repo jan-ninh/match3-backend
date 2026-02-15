@@ -16,7 +16,7 @@ const powersSchema = z.object({
   powers: z.object({
     bomb: z.number().int().nonnegative().optional(),
     rocket: z.number().int().nonnegative().optional(),
-    extraTime: z.number().int().nonnegative().optional(),
+    extraShuffle: z.number().int().nonnegative().optional(),
   }),
   operation: z.enum(['set', 'add']).optional(),
 });

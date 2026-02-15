@@ -47,7 +47,7 @@ export const updateAvatar: RequestHandler = async (req, res, next) => {
 
 /**
  * Update user powers.
- * Body: { powers: { bomb?: number, rocket?: number, extraTime?: number }, operation?: 'set' | 'add' }
+ * Body: { powers: { bomb?: number, rocket?: number, extraShuffle?: number }, operation?: 'set' | 'add' }
  * operation='set' (default) -> set absolute values (non-negative)
  * operation='add' -> increment existing counts (can be positive only)
  */
@@ -55,7 +55,7 @@ export const updatePowers: RequestHandler = async (req, res, next) => {
   try {
     const { id } = req.params as { id: string };
     const { powers, operation } = req.body as {
-      powers?: { bomb?: number; rocket?: number; extraTime?: number };
+      powers?: { bomb?: number; rocket?: number; extraShuffle?: number };
       operation?: 'set' | 'add';
     };
 
@@ -64,7 +64,7 @@ export const updatePowers: RequestHandler = async (req, res, next) => {
     if (!user) return res.status(404).json({ error: 'user not found' });
 
     // ensure powers object exists on user
-    user.powers = user.powers ?? { bomb: 0, rocket: 0, extraTime: 0 };
+    user.powers = user.powers ?? { bomb: 0, rocket: 0, extraShuffle: 0 };
 
     if (powers && typeof powers === 'object') {
       const op = operation === 'add' ? 'add' : 'set';
@@ -72,12 +72,12 @@ export const updatePowers: RequestHandler = async (req, res, next) => {
       if (op === 'add') {
         if (typeof powers.bomb === 'number') user.powers.bomb = Math.max(0, (user.powers.bomb || 0) + Math.floor(powers.bomb));
         if (typeof powers.rocket === 'number') user.powers.rocket = Math.max(0, (user.powers.rocket || 0) + Math.floor(powers.rocket));
-        if (typeof powers.extraTime === 'number') user.powers.extraTime = Math.max(0, (user.powers.extraTime || 0) + Math.floor(powers.extraTime));
+        if (typeof powers.extraShuffle === 'number') user.powers.extraShuffle = Math.max(0, (user.powers.extraShuffle || 0) + Math.floor(powers.extraShuffle));
       } else {
         // set
         if (typeof powers.bomb === 'number') user.powers.bomb = Math.max(0, Math.floor(powers.bomb));
         if (typeof powers.rocket === 'number') user.powers.rocket = Math.max(0, Math.floor(powers.rocket));
-        if (typeof powers.extraTime === 'number') user.powers.extraTime = Math.max(0, Math.floor(powers.extraTime));
+        if (typeof powers.extraShuffle === 'number') user.powers.extraShuffle = Math.max(0, Math.floor(powers.extraShuffle));
       }
     } else {
       return res.status(400).json({ error: 'powers object is required' });

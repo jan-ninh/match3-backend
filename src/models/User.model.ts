@@ -1,12 +1,12 @@
 // src/models/User.model.ts
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
-export type PowerKey = 'bomb' | 'rocket' | 'extraTime';
+export type PowerKey = 'bomb' | 'rocket' | 'extraShuffle';
 
 interface Powers {
   bomb: number;
   rocket: number;
-  extraTime: number;
+  extraShuffle: number;
 }
 
 interface StageProgress {
@@ -50,7 +50,7 @@ const powersSchema = new Schema<Powers>(
   {
     bomb: { type: Number, default: 0 },
     rocket: { type: Number, default: 0 },
-    extraTime: { type: Number, default: 0 },
+    extraShuffle: { type: Number, default: 0 },
   },
   { _id: false },
 );
@@ -69,7 +69,7 @@ const stageProgressSchema = new Schema<StageProgress>(
     completed: { type: Boolean, default: false },
     points: { type: Number, default: 0 },
     lastCompletedAt: { type: Date },
-    usedPower: { type: String, enum: ['bomb', 'rocket', 'extraTime'] },
+    usedPower: { type: String, enum: ['bomb', 'rocket', 'extraShuffle'] },
   },
   { _id: false },
 );
@@ -92,7 +92,7 @@ const userSchema = new Schema<IUser>(
       enum: ['default.png', 'avatar1.png', 'avatar2.png', 'avatar3.png', 'avatar4.png', 'avatar5.png', 'avatar6.png'],
       default: 'default.png',
     },
-    powers: { type: powersSchema, default: () => ({ bomb: 0, rocket: 0, extraTime: 0 }) },
+    powers: { type: powersSchema, default: () => ({ bomb: 0, rocket: 0, extraShuffle: 0 }) },
     totalScore: { type: Number, default: 0, index: true },
     hearts: { type: Number, default: 3, min: 0 },
     progress: { type: Map, of: stageProgressSchema, default: {} },

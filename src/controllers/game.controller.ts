@@ -27,10 +27,10 @@ export const startStage: RequestHandler = async (req, res, next) => {
 
     const boosterSnapshot = { ...user.powers };
 
-    const stageBoosters = stageSelectedBoosters || { bomb: 0, rocket: 0, extraTime: 0 };
+    const stageBoosters = stageSelectedBoosters || { bomb: 0, rocket: 0, extraShuffle: 0 };
     if (stageBoosters.bomb && stageBoosters.bomb > 0) user.powers.bomb += stageBoosters.bomb;
     if (stageBoosters.rocket && stageBoosters.rocket > 0) user.powers.rocket += stageBoosters.rocket;
-    if (stageBoosters.extraTime && stageBoosters.extraTime > 0) user.powers.extraTime += stageBoosters.extraTime;
+    if (stageBoosters.extraShuffle && stageBoosters.extraShuffle > 0) user.powers.extraShuffle += stageBoosters.extraShuffle;
 
     user.activeStageRun = {
       stageId,
@@ -168,7 +168,7 @@ export const loseGame: RequestHandler = async (req, res, next) => {
       // Only remove stage-selected boosters
       user.powers.bomb = Math.max(0, user.powers.bomb - (stageSelectedBoosters.bomb || 0));
       user.powers.rocket = Math.max(0, user.powers.rocket - (stageSelectedBoosters.rocket || 0));
-      user.powers.extraTime = Math.max(0, user.powers.extraTime - (stageSelectedBoosters.extraTime || 0));
+      user.powers.extraShuffle = Math.max(0, user.powers.extraShuffle - (stageSelectedBoosters.extraShuffle || 0));
       user.activeStageRun = undefined;
     }
 
@@ -213,7 +213,7 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
       // Only remove stage-selected boosters (rollback)
       user.powers.bomb = Math.max(0, user.powers.bomb - (stageSelectedBoosters.bomb || 0));
       user.powers.rocket = Math.max(0, user.powers.rocket - (stageSelectedBoosters.rocket || 0));
-      user.powers.extraTime = Math.max(0, user.powers.extraTime - (stageSelectedBoosters.extraTime || 0));
+      user.powers.extraShuffle = Math.max(0, user.powers.extraShuffle - (stageSelectedBoosters.extraShuffle || 0));
       user.activeStageRun = undefined;
     }
 
