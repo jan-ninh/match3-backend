@@ -9,3 +9,8 @@ export const completeStageParamsSchema = z.object({
   id: z.string().min(24).max(24), // MongoDB ObjectId
   stageNumber: z.string().transform(Number).pipe(z.number().int().min(1).max(12)),
 });
+
+// Schema for abandon/lose endpoints - validates user ID parameter
+export const gameEndParamsSchema = z.object({
+  id: z.string().min(24).max(24), // MongoDB ObjectId
+});
