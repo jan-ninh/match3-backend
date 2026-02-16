@@ -5,6 +5,43 @@ import { refillHearts } from '#services';
 
 const BASE_POINTS = 800;
 const REPLAY_POINTS = 400;
+const RUN_START_POWERS = { bomb: 1, laser: 1, extraShuffle: 2 } as const;
+const STAGE1_RESET_PROGRESS = { completed: false, points: 0 } as const;
+const FINAL_STAGE = 12;
+
+function parseStageNumberFromKey(key: string): number | null {
+  if (!key.startsWith('stage')) return null;
+  const n = Number.parseInt(key.slice(5), 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+function getAllowedStageFromProgress(progress: Map<string, { completed: boolean }>): number {
+  let highestCompleted = 0;
+
+  for (const [key, value] of progress.entries()) {
+    if (!value?.completed) continue;
+    const n = parseStageNumberFromKey(key);
+    if (n === null) continue;
+    if (n > highestCompleted) highestCompleted = n;
+  }
+
+  if (highestCompleted >= FINAL_STAGE) return FINAL_STAGE;
+  return highestCompleted + 1;
+}
+
+function resetRunStateToStage1(user: {
+  powers: { bomb: number; laser: number; extraShuffle: number };
+  progress: Map<string, { completed: boolean; points: number; lastCompletedAt?: Date; usedPower?: PowerKey }>;
+  totalScore: number;
+  activeStageRun?: unknown;
+}) {
+  user.powers = { ...RUN_START_POWERS };
+  user.progress.clear();
+  user.progress.set('stage1', { ...STAGE1_RESET_PROGRESS });
+  user.totalScore = 0;
+  user.activeStageRun = undefined;
+}
 
 export const startStage: RequestHandler = async (req, res, next) => {
   try {
@@ -17,12 +54,55 @@ export const startStage: RequestHandler = async (req, res, next) => {
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    // Only the user's current frontier stage can be played.
+    // Disallow both previous stages and not-yet-unlocked future stages.
+    const allowedStage = getAllowedStageFromProgress(user.progress);
+    if (stageNum !== allowedStage) {
+      return res.status(403).json({
+        error: 'Stage is not currently playable',
+        allowedStage,
+      });
+    }
+
     if (stageNum > 1) {
       const prevStageKey = `stage${stageNum - 1}`;
       const prevProgress = user.progress.get(prevStageKey);
       if (!prevProgress?.completed) {
         return res.status(403).json({ error: 'Previous stage not completed' });
       }
+    }
+
+    // Hard rule:
+    // Whenever stage 1 starts (under any condition), powers must reset to RUN_START_POWERS.
+    if (stageNum === 1) {
+      const stageBoosters = { bomb: 0, laser: 0, extraShuffle: 0 };
+
+      user.powers = { ...RUN_START_POWERS };
+      user.activeStageRun = {
+        stageId,
+        boosterSnapshot: { ...RUN_START_POWERS },
+        stageSelectedBoosters: stageBoosters as any,
+      };
+
+      await user.save();
+
+      return res.json({
+        message: 'Stage started',
+        stage: stageId,
+        boosters: user.powers,
+        activeStageRun: user.activeStageRun,
+      });
+    }
+
+    // Idempotency guard:
+    // If the same stage is already active, do not re-apply reset/boosters.
+    if (user.activeStageRun?.stageId === stageId) {
+      return res.json({
+        message: 'Stage already active',
+        stage: stageId,
+        boosters: user.powers,
+        activeStageRun: user.activeStageRun,
+      });
     }
 
     const boosterSnapshot = { ...user.powers };
@@ -74,10 +154,10 @@ export const completeStage: RequestHandler = async (req, res, next) => {
 
     const points = currentProgress.completed ? REPLAY_POINTS : BASE_POINTS;
 
+    // Best-effort consume:
+    // Do not block progression if frontend sends a stale/invalid usedPower signal.
     if (usedPower && user.powers[usedPower] > 0) {
       user.powers[usedPower]--;
-    } else if (usedPower) {
-      return res.status(400).json({ error: `No ${usedPower} available` });
     }
 
     user.progress.set(stageKey, {
@@ -86,6 +166,17 @@ export const completeStage: RequestHandler = async (req, res, next) => {
       lastCompletedAt: new Date(),
       usedPower,
     });
+
+    // Materialize next stage row in progress table for clear backend state.
+    // This ensures stage2 (after winning stage1), etc. exists explicitly in DB.
+    const isFinalStage = stageNum >= FINAL_STAGE;
+    if (!isFinalStage) {
+      const nextStageKey = `stage${stageNum + 1}`;
+      const existingNext = user.progress.get(nextStageKey);
+      if (!existingNext) {
+        user.progress.set(nextStageKey, { completed: false, points: 0 });
+      }
+    }
 
     user.totalScore += points;
 
@@ -105,8 +196,8 @@ export const completeStage: RequestHandler = async (req, res, next) => {
     );
 
     // Check if this is the final stage (stage 12) - if not, show power selection screen
-    const isFinalStage = stageNum === 12;
-    const showPowerSelection = !isFinalStage;
+    const isFinalStageResponse = stageNum === FINAL_STAGE;
+    const showPowerSelection = !isFinalStageResponse;
 
     res.json({
       message: 'Stage completed',
@@ -116,7 +207,7 @@ export const completeStage: RequestHandler = async (req, res, next) => {
       powers: user.powers,
       newBadges: user.badges.filter((b) => b.achievedAt > new Date(Date.now() - 1000)),
       showPowerSelection,
-      nextStage: !isFinalStage ? `stage${stageNum + 1}` : null,
+      nextStage: !isFinalStageResponse ? `stage${stageNum + 1}` : null,
     });
   } catch (err) {
     next(err);
@@ -169,18 +260,8 @@ export const loseGame: RequestHandler = async (req, res, next) => {
       user.hearts -= 1;
     }
 
-    // Roguelite logic: Reset run progression on loss
-    // Clear all powers (collected during current run)
-    user.powers = { bomb: 0, laser: 0, extraShuffle: 0 };
-
-    // Reset progress map - only keep stage1 structure for next run
-    user.progress.clear();
-
-    // Reset total score (run-specific, not cumulative stats)
-    user.totalScore = 0;
-
-    // Clear active stage run
-    user.activeStageRun = undefined;
+    // Roguelite reset: keep only stage1 (reset), remove every other stage record.
+    resetRunStateToStage1(user);
 
     user.gamesPlayed += 1;
     user.gamesLost += 1;
@@ -220,18 +301,8 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
       user.hearts -= 1;
     }
 
-    // Roguelite logic: Reset run progression on abandon (same as lose)
-    // Clear all powers (collected during current run)
-    user.powers = { bomb: 0, laser: 0, extraShuffle: 0 };
-
-    // Reset progress map - only keep stage1 structure for next run
-    user.progress.clear();
-
-    // Reset total score (run-specific, not cumulative stats)
-    user.totalScore = 0;
-
-    // Clear active stage run
-    user.activeStageRun = undefined;
+    // Roguelite reset: keep only stage1 (reset), remove every other stage record.
+    resetRunStateToStage1(user);
 
     user.gamesPlayed += 1;
     user.gamesLost += 1;
@@ -279,9 +350,13 @@ export const getStatus: RequestHandler = async (req, res, next) => {
       nextRefillAt = new Date(newLastRefillAt.getTime() + refillInterval);
     }
 
+    const allowedStage = getAllowedStageFromProgress(user.progress);
+
     res.json({
       hearts: currentHearts,
       maxHearts,
+      powers: user.powers,
+      allowedStage,
       nextRefillAt,
     });
   } catch (err) {
