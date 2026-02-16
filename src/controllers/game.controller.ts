@@ -27,10 +27,10 @@ export const startStage: RequestHandler = async (req, res, next) => {
 
     const boosterSnapshot = { ...user.powers };
 
-    const stageBoosters = stageSelectedBoosters || { bomb: 0, rocket: 0, extraTime: 0 };
+    const stageBoosters = stageSelectedBoosters || { bomb: 0, laser: 0, extraShuffle: 0 };
     if (stageBoosters.bomb && stageBoosters.bomb > 0) user.powers.bomb += stageBoosters.bomb;
-    if (stageBoosters.rocket && stageBoosters.rocket > 0) user.powers.rocket += stageBoosters.rocket;
-    if (stageBoosters.extraTime && stageBoosters.extraTime > 0) user.powers.extraTime += stageBoosters.extraTime;
+    if (stageBoosters.laser && stageBoosters.laser > 0) user.powers.laser += stageBoosters.laser;
+    if (stageBoosters.extraShuffle && stageBoosters.extraShuffle > 0) user.powers.extraShuffle += stageBoosters.extraShuffle;
 
     user.activeStageRun = {
       stageId,
@@ -133,9 +133,9 @@ function checkAndAwardBadges(user: any) {
     user.badges.push({ badgeKey: 'played5Stages', achievedAt: new Date() });
   }
 
-  const usedRocket = Array.from(user.progress.values()).some((p: any) => p.usedPower === 'rocket');
-  if (usedRocket && !badgeKeys.includes('usedRocket')) {
-    user.badges.push({ badgeKey: 'usedRocket', achievedAt: new Date() });
+  const usedLaser = Array.from(user.progress.values()).some((p: any) => p.usedPower === 'laser');
+  if (usedLaser && !badgeKeys.includes('usedLaser')) {
+    user.badges.push({ badgeKey: 'usedLaser', achievedAt: new Date() });
   }
 
   const stage3 = user.progress.get('stage3');
@@ -167,8 +167,8 @@ export const loseGame: RequestHandler = async (req, res, next) => {
       const { stageSelectedBoosters } = user.activeStageRun;
       // Only remove stage-selected boosters
       user.powers.bomb = Math.max(0, user.powers.bomb - (stageSelectedBoosters.bomb || 0));
-      user.powers.rocket = Math.max(0, user.powers.rocket - (stageSelectedBoosters.rocket || 0));
-      user.powers.extraTime = Math.max(0, user.powers.extraTime - (stageSelectedBoosters.extraTime || 0));
+      user.powers.laser = Math.max(0, user.powers.laser - (stageSelectedBoosters.laser || 0));
+      user.powers.extraShuffle = Math.max(0, user.powers.extraShuffle - (stageSelectedBoosters.extraShuffle || 0));
       user.activeStageRun = undefined;
     }
 
@@ -212,8 +212,8 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
       const { stageSelectedBoosters } = user.activeStageRun;
       // Only remove stage-selected boosters (rollback)
       user.powers.bomb = Math.max(0, user.powers.bomb - (stageSelectedBoosters.bomb || 0));
-      user.powers.rocket = Math.max(0, user.powers.rocket - (stageSelectedBoosters.rocket || 0));
-      user.powers.extraTime = Math.max(0, user.powers.extraTime - (stageSelectedBoosters.extraTime || 0));
+      user.powers.laser = Math.max(0, user.powers.laser - (stageSelectedBoosters.laser || 0));
+      user.powers.extraShuffle = Math.max(0, user.powers.extraShuffle - (stageSelectedBoosters.extraShuffle || 0));
       user.activeStageRun = undefined;
     }
 
