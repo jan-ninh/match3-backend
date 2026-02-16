@@ -104,6 +104,10 @@ export const completeStage: RequestHandler = async (req, res, next) => {
       { upsert: true },
     );
 
+    // Check if this is the final stage (stage 12) - if not, show power selection screen
+    const isFinalStage = stageNum === 12;
+    const showPowerSelection = !isFinalStage;
+
     res.json({
       message: 'Stage completed',
       stage: stageKey,
@@ -111,6 +115,8 @@ export const completeStage: RequestHandler = async (req, res, next) => {
       totalScore: user.totalScore,
       powers: user.powers,
       newBadges: user.badges.filter((b) => b.achievedAt > new Date(Date.now() - 1000)),
+      showPowerSelection,
+      nextStage: !isFinalStage ? `stage${stageNum + 1}` : null,
     });
   } catch (err) {
     next(err);
@@ -163,14 +169,18 @@ export const loseGame: RequestHandler = async (req, res, next) => {
       user.hearts -= 1;
     }
 
-    if (user.activeStageRun) {
-      const { stageSelectedBoosters } = user.activeStageRun;
-      // Only remove stage-selected boosters
-      user.powers.bomb = Math.max(0, user.powers.bomb - (stageSelectedBoosters.bomb || 0));
-      user.powers.laser = Math.max(0, user.powers.laser - (stageSelectedBoosters.laser || 0));
-      user.powers.extraShuffle = Math.max(0, user.powers.extraShuffle - (stageSelectedBoosters.extraShuffle || 0));
-      user.activeStageRun = undefined;
-    }
+    // Roguelite logic: Reset run progression on loss
+    // Clear all powers (collected during current run)
+    user.powers = { bomb: 0, laser: 0, extraShuffle: 0 };
+
+    // Reset progress map - only keep stage1 structure for next run
+    user.progress.clear();
+
+    // Reset total score (run-specific, not cumulative stats)
+    user.totalScore = 0;
+
+    // Clear active stage run
+    user.activeStageRun = undefined;
 
     user.gamesPlayed += 1;
     user.gamesLost += 1;
@@ -180,12 +190,14 @@ export const loseGame: RequestHandler = async (req, res, next) => {
     await LeaderboardEntry.findOneAndUpdate({ userId: id }, { username: user.username, gamesWon: user.gamesWon, gamesLost: user.gamesLost }, { upsert: true });
 
     res.json({
-      message: 'Game lost',
+      message: 'Game lost - Roguelite reset: all progress, powers, and score reset to start new run from stage 1',
       hearts: user.hearts,
       powers: user.powers,
+      totalScore: user.totalScore,
       gamesPlayed: user.gamesPlayed,
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,
+      restartFrom: 'stage1',
     });
   } catch (err) {
     next(err);
@@ -208,14 +220,18 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
       user.hearts -= 1;
     }
 
-    if (user.activeStageRun) {
-      const { stageSelectedBoosters } = user.activeStageRun;
-      // Only remove stage-selected boosters (rollback)
-      user.powers.bomb = Math.max(0, user.powers.bomb - (stageSelectedBoosters.bomb || 0));
-      user.powers.laser = Math.max(0, user.powers.laser - (stageSelectedBoosters.laser || 0));
-      user.powers.extraShuffle = Math.max(0, user.powers.extraShuffle - (stageSelectedBoosters.extraShuffle || 0));
-      user.activeStageRun = undefined;
-    }
+    // Roguelite logic: Reset run progression on abandon (same as lose)
+    // Clear all powers (collected during current run)
+    user.powers = { bomb: 0, laser: 0, extraShuffle: 0 };
+
+    // Reset progress map - only keep stage1 structure for next run
+    user.progress.clear();
+
+    // Reset total score (run-specific, not cumulative stats)
+    user.totalScore = 0;
+
+    // Clear active stage run
+    user.activeStageRun = undefined;
 
     user.gamesPlayed += 1;
     user.gamesLost += 1;
@@ -225,12 +241,14 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
     await LeaderboardEntry.findOneAndUpdate({ userId: id }, { username: user.username, gamesWon: user.gamesWon, gamesLost: user.gamesLost }, { upsert: true });
 
     res.json({
-      message: 'Game abandoned, heart decreased and stage-selected boosters removed',
+      message: 'Game abandoned - Roguelite reset: all progress, powers, and score reset to start new run from stage 1',
       hearts: user.hearts,
       powers: user.powers,
+      totalScore: user.totalScore,
       gamesPlayed: user.gamesPlayed,
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,
+      restartFrom: 'stage1',
     });
   } catch (err) {
     next(err);
