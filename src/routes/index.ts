@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { healthRouter } from './health.ts';
-// src/routes/index.ts
 
 import authRoutes from './auth.routes.ts';
 import userRoutes from './user.routes.ts';
 import gameRoutes from './game.routes.ts';
 import leaderboardRoutes from './leaderboard.routes.ts';
+import campaignRoutes from './campaign.routes.ts';
 
 export const routes = Router();
 
@@ -19,6 +19,7 @@ routes.use('/api/auth', authRoutes);
 routes.use('/api/user', userRoutes);
 routes.use('/api/game', gameRoutes);
 routes.use('/api/leaderboard', leaderboardRoutes);
+routes.use('/api/campaign', campaignRoutes);
 
 console.log('[routes] index loaded and routes mounted');
 
