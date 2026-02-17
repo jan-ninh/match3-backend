@@ -268,7 +268,11 @@ export const loseGame: RequestHandler = async (req, res, next) => {
 
     await user.save();
 
-    await LeaderboardEntry.findOneAndUpdate({ userId: id }, { username: user.username, gamesWon: user.gamesWon, gamesLost: user.gamesLost }, { upsert: true });
+    await LeaderboardEntry.findOneAndUpdate(
+      { userId: user._id },
+      { username: user.username, totalScore: user.totalScore, gamesWon: user.gamesWon, gamesLost: user.gamesLost },
+      { upsert: true },
+    );
 
     res.json({
       message: 'Game lost - Roguelite reset: all progress, powers, and score reset to start new run from stage 1',
@@ -309,7 +313,11 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
 
     await user.save();
 
-    await LeaderboardEntry.findOneAndUpdate({ userId: id }, { username: user.username, gamesWon: user.gamesWon, gamesLost: user.gamesLost }, { upsert: true });
+    await LeaderboardEntry.findOneAndUpdate(
+      { userId: user._id },
+      { username: user.username, totalScore: user.totalScore, gamesWon: user.gamesWon, gamesLost: user.gamesLost },
+      { upsert: true },
+    );
 
     res.json({
       message: 'Game abandoned - Roguelite reset: all progress, powers, and score reset to start new run from stage 1',
