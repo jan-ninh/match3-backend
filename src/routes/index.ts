@@ -1,4 +1,3 @@
-// src/routes/index.ts
 import { Router } from 'express';
 import { healthRouter } from './health.ts';
 
@@ -20,8 +19,6 @@ routes.use('/api/auth', authRoutes);
 routes.use('/api/user', userRoutes);
 routes.use('/api/game', gameRoutes);
 routes.use('/api/leaderboard', leaderboardRoutes);
-
-// Campaign/Leaderboard tracking (FE expects /api/campaign/*)
 routes.use('/api/campaign', campaignRoutes);
 
 console.log('[routes] index loaded and routes mounted');

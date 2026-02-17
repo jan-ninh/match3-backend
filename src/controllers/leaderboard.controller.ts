@@ -1,26 +1,25 @@
 // src/controllers/leaderboard.controller.ts
 import type { RequestHandler } from 'express';
-import { LeaderboardEntry } from '#models';
-
-interface PopulatedUser {
-  username: string;
-  avatar: 'default.png' | 'avatar1.png' | 'avatar2.png' | 'avatar3.png' | 'avatar4.png' | 'avatar5.png' | 'avatar6.png';
-}
+import { AllTimeLeaderboardEntry } from '#models';
 
 export const top10: RequestHandler = async (_req, res, next) => {
   try {
-    const top10Users = await LeaderboardEntry.find().sort({ totalScore: -1 }).limit(10).populate('userId', 'username avatar');
+    const entries = await AllTimeLeaderboardEntry.find()
+      .sort({ totalLevelsPlayed: 1, metaTier: 1, movesMetric: 1, finishedAt: 1, runId: 1 })
+      .limit(10)
+      .lean();
 
-    const formattedTop10 = top10Users.map((entry) => {
-      const user = entry.userId as unknown as PopulatedUser;
-      return {
-        username: user?.username || entry.username,
-        avatar: user?.avatar || 'default.png',
-        totalScore: entry.totalScore,
-      };
-    });
+    const formatted = entries.map((e) => ({
+      username: e.username,
+      avatar: e.avatar,
+      totalScore: e.displayScore, // keep FE shape compatible
+      // Optional debug / UI extras:
+      totalLevelsPlayed: e.totalLevelsPlayed,
+      metaTier: e.metaTier,
+      movesMetric: e.movesMetric,
+    }));
 
-    res.json({ top10: formattedTop10 });
+    res.json({ top10: formatted });
   } catch (err) {
     next(err);
   }
@@ -30,26 +29,57 @@ export const myRank: RequestHandler = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const userEntry = await LeaderboardEntry.findOne({ userId: id });
-    if (!userEntry) return res.status(404).json({ error: 'User not in leaderboard' });
+    const me = await AllTimeLeaderboardEntry.findOne({ accountId: id }).lean();
+    if (!me) return res.status(404).json({ error: 'User not in leaderboard' });
 
-    const rank = await LeaderboardEntry.countDocuments({ totalScore: { $gt: userEntry.totalScore } });
+    const rankQuery = {
+      $or: [
+        { totalLevelsPlayed: { $lt: me.totalLevelsPlayed } },
+        { totalLevelsPlayed: me.totalLevelsPlayed, metaTier: { $lt: me.metaTier } },
+        { totalLevelsPlayed: me.totalLevelsPlayed, metaTier: me.metaTier, movesMetric: { $lt: me.movesMetric } },
+        {
+          totalLevelsPlayed: me.totalLevelsPlayed,
+          metaTier: me.metaTier,
+          movesMetric: me.movesMetric,
+          finishedAt: { $lt: me.finishedAt },
+        },
+        {
+          totalLevelsPlayed: me.totalLevelsPlayed,
+          metaTier: me.metaTier,
+          movesMetric: me.movesMetric,
+          finishedAt: me.finishedAt,
+          runId: { $lt: me.runId },
+        },
+      ],
+    } as const;
 
-    const top10 = await LeaderboardEntry.find().sort({ totalScore: -1 }).limit(10).populate('userId', 'username avatar');
+    const betterCount = await AllTimeLeaderboardEntry.countDocuments(rankQuery);
 
-    const formattedTop10 = top10.map((entry) => {
-      const user = entry.userId as unknown as PopulatedUser;
-      return {
-        username: user?.username || entry.username,
-        avatar: user?.avatar || 'default.png',
-        totalScore: entry.totalScore,
-      };
-    });
+    const top10Entries = await AllTimeLeaderboardEntry.find()
+      .sort({ totalLevelsPlayed: 1, metaTier: 1, movesMetric: 1, finishedAt: 1, runId: 1 })
+      .limit(10)
+      .lean();
+
+    const top10 = top10Entries.map((e) => ({
+      username: e.username,
+      avatar: e.avatar,
+      totalScore: e.displayScore,
+      totalLevelsPlayed: e.totalLevelsPlayed,
+      metaTier: e.metaTier,
+      movesMetric: e.movesMetric,
+    }));
 
     res.json({
       top10,
-      yourRank: rank + 1,
-      yourScore: userEntry.totalScore,
+      yourRank: betterCount + 1,
+      yourScore: me.displayScore,
+      yourRankKey: {
+        totalLevelsPlayed: me.totalLevelsPlayed,
+        metaTier: me.metaTier,
+        movesMetric: me.movesMetric,
+        finishedAt: me.finishedAt,
+        runId: me.runId,
+      },
     });
   } catch (err) {
     next(err);
