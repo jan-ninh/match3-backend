@@ -5,7 +5,7 @@ import { refillHearts } from '#services';
 
 const BASE_POINTS = 800;
 const REPLAY_POINTS = 400;
-const RUN_START_POWERS = { bomb: 1, laser: 1, extraShuffle: 2 } as const;
+const RUN_START_POWERS = { bomb: 120, laser: 120, extraShuffle: 120 } as const; // 1,1,2
 const STAGE1_RESET_PROGRESS = { completed: false, points: 0 } as const;
 const FINAL_STAGE = 12;
 
