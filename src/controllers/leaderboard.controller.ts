@@ -1,22 +1,16 @@
 // src/controllers/leaderboard.controller.ts
 import type { RequestHandler } from 'express';
-import { AllTimeLeaderboardEntry } from '#models';
+import type { QueryFilter } from 'mongoose';
+import { AllTimeLeaderboardEntry, type IAllTimeLeaderboardEntry } from '#models';
 
 export const top10: RequestHandler = async (_req, res, next) => {
   try {
-    const entries = await AllTimeLeaderboardEntry.find()
-      .sort({ totalLevelsPlayed: 1, metaTier: 1, movesMetric: 1, finishedAt: 1, runId: 1 })
-      .limit(10)
-      .lean();
+    const entries = await AllTimeLeaderboardEntry.find().sort({ totalLevelsPlayed: 1, metaTier: 1, movesMetric: 1, finishedAt: 1, runId: 1 }).limit(10).lean();
 
     const formatted = entries.map((e) => ({
       username: e.username,
       avatar: e.avatar,
-      totalScore: e.displayScore, // keep FE shape compatible
-      // Optional debug / UI extras:
-      totalLevelsPlayed: e.totalLevelsPlayed,
-      metaTier: e.metaTier,
-      movesMetric: e.movesMetric,
+      totalScore: e.displayScore,
     }));
 
     res.json({ top10: formatted });
@@ -32,7 +26,7 @@ export const myRank: RequestHandler = async (req, res, next) => {
     const me = await AllTimeLeaderboardEntry.findOne({ accountId: id }).lean();
     if (!me) return res.status(404).json({ error: 'User not in leaderboard' });
 
-    const rankQuery = {
+    const rankQuery: QueryFilter<IAllTimeLeaderboardEntry> = {
       $or: [
         { totalLevelsPlayed: { $lt: me.totalLevelsPlayed } },
         { totalLevelsPlayed: me.totalLevelsPlayed, metaTier: { $lt: me.metaTier } },
@@ -51,7 +45,7 @@ export const myRank: RequestHandler = async (req, res, next) => {
           runId: { $lt: me.runId },
         },
       ],
-    } as const;
+    };
 
     const betterCount = await AllTimeLeaderboardEntry.countDocuments(rankQuery);
 
@@ -64,9 +58,6 @@ export const myRank: RequestHandler = async (req, res, next) => {
       username: e.username,
       avatar: e.avatar,
       totalScore: e.displayScore,
-      totalLevelsPlayed: e.totalLevelsPlayed,
-      metaTier: e.metaTier,
-      movesMetric: e.movesMetric,
     }));
 
     res.json({

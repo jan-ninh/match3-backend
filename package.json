@@ -39,7 +39,7 @@
     "dev": "node --env-file=.env --watch --conditions development src/server.ts",
     "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node --env-file=.env dist/server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "render-build": "npm install --include=dev && npm run build"
   },
