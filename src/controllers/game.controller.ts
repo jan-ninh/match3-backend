@@ -5,6 +5,7 @@ import { refillHearts } from '#services';
 
 const BASE_POINTS = 800;
 const REPLAY_POINTS = 400;
+const LOSS_SCORE_PENALTY = 400;
 const RUN_START_POWERS = { bomb: 1, laser: 1, extraShuffle: 2 } as const; // 1,1,2
 const STAGE1_RESET_PROGRESS = { completed: false, points: 0 } as const;
 const FINAL_STAGE = 12;
@@ -33,13 +34,11 @@ function getAllowedStageFromProgress(progress: Map<string, { completed: boolean 
 function resetRunStateToStage1(user: {
   powers: { bomb: number; laser: number; extraShuffle: number };
   progress: Map<string, { completed: boolean; points: number; lastCompletedAt?: Date; usedPower?: PowerKey }>;
-  totalScore: number;
   activeStageRun?: unknown;
 }) {
   user.powers = { ...RUN_START_POWERS };
   user.progress.clear();
   user.progress.set('stage1', { ...STAGE1_RESET_PROGRESS });
-  user.totalScore = 0;
   user.activeStageRun = undefined;
 }
 
@@ -263,6 +262,9 @@ export const loseGame: RequestHandler = async (req, res, next) => {
     // Roguelite reset: keep only stage1 (reset), remove every other stage record.
     resetRunStateToStage1(user);
 
+    // Loss penalty: subtract 400, but never go below zero.
+    user.totalScore = Math.max(0, user.totalScore - LOSS_SCORE_PENALTY);
+
     user.gamesPlayed += 1;
     user.gamesLost += 1;
 
@@ -275,7 +277,7 @@ export const loseGame: RequestHandler = async (req, res, next) => {
     );
 
     res.json({
-      message: 'Game lost - Roguelite reset: all progress, powers, and score reset to start new run from stage 1',
+      message: 'Game lost - Roguelite reset: progress and powers reset to start new run from stage 1 (totalScore is preserved)',
       hearts: user.hearts,
       powers: user.powers,
       totalScore: user.totalScore,
@@ -320,7 +322,7 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
     );
 
     res.json({
-      message: 'Game abandoned - Roguelite reset: all progress, powers, and score reset to start new run from stage 1',
+      message: 'Game abandoned - Roguelite reset: progress and powers reset to start new run from stage 1 (totalScore is preserved)',
       hearts: user.hearts,
       powers: user.powers,
       totalScore: user.totalScore,
