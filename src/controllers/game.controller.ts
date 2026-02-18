@@ -1,13 +1,64 @@
 // src/controllers/game.controller.ts
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler } from 'express';
 import { User, LeaderboardEntry, type PowerKey } from '#models';
 import { refillHearts } from '#services';
 
 const BASE_POINTS = 800;
 const REPLAY_POINTS = 400;
-const RUN_START_POWERS = { bomb: 1, laser: 1, extraShuffle: 2 } as const; // 1,1,2
+// const RUN_START_POWERS = { bomb: 1, laser: 1, extraShuffle: 2 } as const; // 1,1,2
+const RUN_START_POWERS = { bomb: 120, laser: 120, extraShuffle: 120 } as const; // 1,1,2
 const STAGE1_RESET_PROGRESS = { completed: false, points: 0 } as const;
 const FINAL_STAGE = 12;
+/**
+ * DEMO / presentation helper:
+ * - When enabled, backend will allow starting/completing arbitrary stages (no frontier gate),
+ *   and will backfill earlier stages as completed (0 points) so the map unlocks naturally.
+ *
+ * Enable via:
+ * - env: ALLOW_STAGE_SKIP=1
+ * - OR request header: x-match3-allow-stage-skip: 1
+ */
+function isStageSkipEnabled(req: Request): boolean {
+  if (process.env.ALLOW_STAGE_SKIP === '1') return true;
+
+  // Convenience: in local dev you'll usually have NODE_ENV=development
+  // (we intentionally do NOT treat empty/undefined NODE_ENV as dev).
+  const env = String(process.env.NODE_ENV ?? '')
+    .trim()
+    .toLowerCase();
+  if (env && env !== 'production') return true;
+
+  const h = req.header('x-match3-allow-stage-skip');
+  if (!h) return false;
+
+  const v = String(h).trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+function isValidStageNumber(n: number): boolean {
+  return Number.isFinite(n) && n >= 1 && n <= FINAL_STAGE;
+}
+
+function backfillProgressForSkippedStages(progress: Map<string, unknown>, stageNum: number) {
+  // Mark earlier stages as completed (0 points) so:
+  // - allowedStage becomes (highestCompleted + 1)
+  // - the map can render a sensible unlocked run
+  for (let n = 1; n < stageNum; n++) {
+    const key = `stage${n}`;
+    const cur = progress.get(key);
+
+    if (cur && typeof cur === 'object') {
+      const r = cur as { completed?: unknown; points?: unknown };
+      if (r.completed === true) continue;
+
+      const points = typeof r.points === 'number' && Number.isFinite(r.points) ? r.points | 0 : 0;
+      progress.set(key, { completed: true, points });
+      continue;
+    }
+
+    progress.set(key, { completed: true, points: 0 });
+  }
+}
 
 function parseStageNumberFromKey(key: string): number | null {
   if (!key.startsWith('stage')) return null;
@@ -47,6 +98,10 @@ export const startStage: RequestHandler = async (req, res, next) => {
   try {
     const { id, stageNumber } = req.params as unknown as { id: string; stageNumber: string };
     const stageNum = parseInt(stageNumber, 10);
+    if (!isValidStageNumber(stageNum)) {
+      return res.status(400).json({ error: 'Invalid stageNumber' });
+    }
+    const demoSkip = isStageSkipEnabled(req);
     const { stageSelectedBoosters } = req.body as { stageSelectedBoosters?: Record<PowerKey, number> };
 
     const stageId = `stage${stageNum}`;
@@ -57,14 +112,14 @@ export const startStage: RequestHandler = async (req, res, next) => {
     // Only the user's current frontier stage can be played.
     // Disallow both previous stages and not-yet-unlocked future stages.
     const allowedStage = getAllowedStageFromProgress(user.progress);
-    if (stageNum !== allowedStage) {
+    if (!demoSkip && stageNum !== allowedStage) {
       return res.status(403).json({
         error: 'Stage is not currently playable',
         allowedStage,
       });
     }
 
-    if (stageNum > 1) {
+    if (!demoSkip && stageNum > 1) {
       const prevStageKey = `stage${stageNum - 1}`;
       const prevProgress = user.progress.get(prevStageKey);
       if (!prevProgress?.completed) {
@@ -135,6 +190,10 @@ export const completeStage: RequestHandler = async (req, res, next) => {
   try {
     const { id, stageNumber } = req.params as unknown as { id: string; stageNumber: string };
     const stageNum = parseInt(stageNumber, 10);
+    if (!isValidStageNumber(stageNum)) {
+      return res.status(400).json({ error: 'Invalid stageNumber' });
+    }
+    const demoSkip = isStageSkipEnabled(req);
     const { usedPower } = req.body as { usedPower?: PowerKey };
 
     const stageKey = `stage${stageNum}`;
@@ -142,7 +201,11 @@ export const completeStage: RequestHandler = async (req, res, next) => {
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    if (stageNum > 1) {
+    if (demoSkip && stageNum > 1) {
+      backfillProgressForSkippedStages(user.progress as unknown as Map<string, unknown>, stageNum);
+    }
+
+    if (!demoSkip && stageNum > 1) {
       const prevStageKey = `stage${stageNum - 1}`;
       const prevProgress = user.progress.get(prevStageKey);
       if (!prevProgress?.completed) {
