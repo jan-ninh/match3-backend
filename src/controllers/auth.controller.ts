@@ -1,26 +1,46 @@
-// src/controllers/auth.controller.ts
-import type { RequestHandler } from 'express';
-import { User } from '#models';
-import { hashPassword, comparePassword } from '#utils';
+import type { RequestHandler, Response } from 'express';
+import { User, RefreshToken } from '#models';
+import { hashPassword, comparePassword, createAccessToken, createRefreshToken } from '#utils';
+import { REFRESH_TOKEN_TTL } from '#config';
+
+function setAuthCookie(res: Response, accessToken: string, refreshToken: string) {
+  res.cookie('accessToken', accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 15 * 60 * 1000, // 15 minutes
+  });
+
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: REFRESH_TOKEN_TTL * 1000,
+  });
+}
 
 export const register: RequestHandler = async (req, res, next) => {
   try {
     const { email, username, password } = req.body as { email: string; username: string; password: string };
+
     const exists = await User.findOne({ $or: [{ email }, { username }] });
     if (exists) return res.status(409).json({ error: 'Email or username already used' });
 
     const hashed = await hashPassword(password);
-    const user = new User({
-      email,
-      username,
-      password: hashed,
-    });
+    const user = new User({ email, username, password: hashed });
     await user.save();
 
-    // create initial leaderboard entry (score 0)
-    // optional: we upsert on score change, so can skip
+    const accessToken = await createAccessToken({ id: user._id });
+    const refreshToken = await createRefreshToken(user._id);
 
-    res.status(201).json({ id: user._id, email: user.email, username: user.username, avatar: user.avatar });
+    setAuthCookie(res, accessToken, refreshToken);
+
+    res.status(201).json({
+      id: user._id,
+      email: user.email,
+      username: user.username,
+      avatar: user.avatar,
+    });
   } catch (err) {
     next(err);
   }
@@ -29,38 +49,44 @@ export const register: RequestHandler = async (req, res, next) => {
 export const login: RequestHandler = async (req, res, next) => {
   try {
     const { email, password } = req.body as { email: string; password: string };
-    const user = await User.findOne({ email });
+
+    const user = await User.findOne({ email }).select('+password');
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
     const ok = await comparePassword(password, user.password);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
-    // return minimal profile; client can store userId (beware: no token)
-    res.json({ id: user._id, email: user.email, username: user.username, avatar: user.avatar, totalScore: user.totalScore, hearts: user.hearts });
+    const accessToken = await createAccessToken({ id: user._id });
+    const refreshToken = await createRefreshToken(user._id);
+
+    setAuthCookie(res, accessToken, refreshToken);
+
+    res.json({
+      id: user._id,
+      email: user.email,
+      username: user.username,
+      avatar: user.avatar,
+      totalScore: user.totalScore,
+      hearts: user.hearts,
+    });
   } catch (err) {
     next(err);
   }
 };
 
-// export const login: RequestHandler = async (req, res, next) => {
-//   try {
-//     console.log('[LOGIN] payload:', { body: req.body, envNODE: process.env.NODE_ENV });
-//     const { email, password } = req.body;
-//     const user = await User.findOne({ email });
-//     console.log('[LOGIN] found user:', !!user);
-//     if (!user) return res.status(401).json({ error: 'invalid credentials' });
+export const logout: RequestHandler = async (req, res, next) => {
+  try {
+    const { refreshToken } = req.cookies;
 
-//     const match = await comparePassword(password, user.password);
-//     console.log('[LOGIN] bcrypt result:', match);
-//     if (!match) return res.status(401).json({ error: 'invalid credentials' });
+    if (refreshToken) {
+      await RefreshToken.findOneAndDelete({ token: refreshToken });
+    }
 
-//     return res.status(200).json({ message: 'ok' });
-//   } catch (err) {
-//     if (err instanceof Error) {
-//       console.error('[LOGIN ERROR]', err.stack);
-//     } else {
-//       console.error('[LOGIN ERROR]', err);
-//     }
-//     return res.status(500).json({ error: 'Internal Server Error' });
-//   }
-// };
+    res.clearCookie('accessToken');
+    res.clearCookie('refreshToken');
+
+    res.json({ message: 'Logged out successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
