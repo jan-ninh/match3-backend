@@ -1,6 +1,7 @@
 // src/app.ts
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { routes } from './routes/index.ts';
 import { notFoundHandler, errorHandler } from '#middlewares';
 
@@ -20,10 +21,12 @@ app.use(
       }
       return callback(new Error('Not allowed by CORS'));
     },
+    credentials: true, // Allow cookies
   }),
 );
 
 app.use(express.json());
+app.use(cookieParser());
 
 // Request logging
 app.use((req, _res, next) => {

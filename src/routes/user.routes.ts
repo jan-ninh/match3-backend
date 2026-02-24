@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { getProfile, updateAvatar, updatePowers } from '#controllers';
 import { z } from 'zod';
-import { validateBodyZod, validateParamsZod } from '#middlewares';
+import { authenticateToken, validateBodyZod, validateParamsZod } from '#middlewares';
 
 const router = Router();
 
@@ -21,7 +21,7 @@ const powersSchema = z.object({
   operation: z.enum(['set', 'add']).optional(),
 });
 
-router.get('/profile/:id', validateParamsZod(idParam), getProfile);
+router.get('/profile/:id', authenticateToken, validateParamsZod(idParam), getProfile);
 router.patch('/avatar/:id', validateParamsZod(idParam), validateBodyZod(avatarSchema), updateAvatar);
 
 // 2) /api/user/powers/:id

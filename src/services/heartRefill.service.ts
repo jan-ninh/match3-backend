@@ -3,7 +3,6 @@ import { User } from '#models';
 import { refillHearts } from '#services';
 
 export function startHeartRefillScheduler() {
-  // هر 30 دقیقه یکبار بررسی کن
   schedule.scheduleJob('*/30 * * * *', async () => {
     try {
       console.log('[heartRefill] Starting scheduled heart refill check...');

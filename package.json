@@ -33,6 +33,10 @@
       "development": "./src/middlewares/index.ts",
       "default": "./dist/middlewares/index.js"
     },
+    "#config": {
+      "development": "./src/config/index.ts",
+      "default": "./dist/config/index.js"
+    },
     "#types": "./src/types/index.ts"
   },
   "scripts": {
@@ -59,7 +63,9 @@
     "node": "22.x"
   },
   "dependencies": {
+    "@types/cookie-parser": "^1.4.10",
     "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
