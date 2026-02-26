@@ -12,6 +12,13 @@ export const getProfile: RequestHandler = async (req, res, next) => {
 
     const progress = Object.fromEntries(user.progress);
 
+    // Defensive normalization (old users may not have these fields yet)
+    const playerLevelRaw = (user as any).playerLevel;
+    const playerExpRaw = (user as any).playerExp;
+
+    const playerLevel = Number.isFinite(Number(playerLevelRaw)) ? Math.max(1, Math.floor(Number(playerLevelRaw))) : 1;
+    const playerExp = Number.isFinite(Number(playerExpRaw)) ? Math.max(0, Math.floor(Number(playerExpRaw))) : 0;
+
     res.json({
       username: user.username,
       avatar: user.avatar,
@@ -22,6 +29,10 @@ export const getProfile: RequestHandler = async (req, res, next) => {
       gamesPlayed: user.gamesPlayed,
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,
+
+      // Meta progression (farmable across runs)
+      playerLevel,
+      playerExp,
     });
   } catch (err) {
     next(err);

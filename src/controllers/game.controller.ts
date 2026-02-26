@@ -5,6 +5,11 @@ import { refillHearts } from '#services';
 
 const BASE_POINTS = 800;
 const REPLAY_POINTS = 400;
+
+// Meta progression (farmable across runs)
+const EXP_PER_WIN = 1000;
+const EXP_PER_LEVEL = 3000;
+
 // const RUN_START_POWERS = { bomb: 1, laser: 1, extraShuffle: 2 } as const; // 1,1,2
 const RUN_START_POWERS = { bomb: 1, laser: 1, extraShuffle: 2 } as const; // 1,1,2
 const STAGE1_RESET_PROGRESS = { completed: false, points: 0 } as const;
@@ -81,17 +86,46 @@ function getAllowedStageFromProgress(progress: Map<string, { completed: boolean 
   return highestCompleted + 1;
 }
 
+function clampInt(n: unknown, min: number, max: number): number {
+  const v = typeof n === 'number' ? n : Number(n);
+  if (!Number.isFinite(v)) return min;
+  const i = Math.floor(v);
+  return Math.max(min, Math.min(max, i));
+}
+
+function awardWinExp(user: { playerLevel?: unknown; playerExp?: unknown }, expGain: number) {
+  const gain = clampInt(expGain, 0, 1_000_000_000);
+
+  const lvl0 = clampInt(user.playerLevel ?? 1, 1, 1_000_000_000);
+  const exp0 = clampInt(user.playerExp ?? 0, 0, 1_000_000_000);
+
+  const total = exp0 + gain;
+
+  const levelsUp = Math.floor(total / EXP_PER_LEVEL);
+  const nextLevel = lvl0 + levelsUp;
+  const nextExp = total % EXP_PER_LEVEL;
+
+  (user as any).playerLevel = nextLevel;
+  (user as any).playerExp = nextExp;
+}
+
 function resetRunStateToStage1(user: {
   powers: { bomb: number; laser: number; extraShuffle: number };
   progress: Map<string, { completed: boolean; points: number; lastCompletedAt?: Date; usedPower?: PowerKey }>;
   totalScore: number;
   activeStageRun?: unknown;
+
+  // meta progression must survive
+  playerLevel?: unknown;
+  playerExp?: unknown;
 }) {
   user.powers = { ...RUN_START_POWERS };
   user.progress.clear();
   user.progress.set('stage1', { ...STAGE1_RESET_PROGRESS });
   user.totalScore = 0;
   user.activeStageRun = undefined;
+
+  // IMPORTANT: do NOT reset playerLevel/playerExp here (roguelite reset keeps meta progression)
 }
 
 export const startStage: RequestHandler = async (req, res, next) => {
@@ -243,6 +277,9 @@ export const completeStage: RequestHandler = async (req, res, next) => {
 
     user.totalScore += points;
 
+    // Meta progression: every WIN grants EXP, including replays (farming allowed).
+    awardWinExp(user as any, EXP_PER_WIN);
+
     checkAndAwardBadges(user);
 
     user.gamesPlayed++;
@@ -268,6 +305,13 @@ export const completeStage: RequestHandler = async (req, res, next) => {
       points,
       totalScore: user.totalScore,
       powers: user.powers,
+
+      // Meta progression
+      playerLevel: (user as any).playerLevel ?? 1,
+      playerExp: (user as any).playerExp ?? 0,
+      expPerLevel: EXP_PER_LEVEL,
+      expGain: EXP_PER_WIN,
+
       newBadges: user.badges.filter((b) => b.achievedAt > new Date(Date.now() - 1000)),
       showPowerSelection,
       nextStage: !isFinalStageResponse ? `stage${stageNum + 1}` : null,
@@ -324,7 +368,8 @@ export const loseGame: RequestHandler = async (req, res, next) => {
     }
 
     // Roguelite reset: keep only stage1 (reset), remove every other stage record.
-    resetRunStateToStage1(user);
+    // IMPORTANT: meta progression (playerLevel/playerExp) stays.
+    resetRunStateToStage1(user as any);
 
     user.gamesPlayed += 1;
     user.gamesLost += 1;
@@ -346,6 +391,11 @@ export const loseGame: RequestHandler = async (req, res, next) => {
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,
       restartFrom: 'stage1',
+
+      // Meta progression persists
+      playerLevel: (user as any).playerLevel ?? 1,
+      playerExp: (user as any).playerExp ?? 0,
+      expPerLevel: EXP_PER_LEVEL,
     });
   } catch (err) {
     next(err);
@@ -355,7 +405,6 @@ export const loseGame: RequestHandler = async (req, res, next) => {
 export const abandonGame: RequestHandler = async (req, res, next) => {
   try {
     const { id } = req.params as { id: string };
-    const { usedPower } = req.body as { usedPower?: PowerKey };
 
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -369,7 +418,8 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
     }
 
     // Roguelite reset: keep only stage1 (reset), remove every other stage record.
-    resetRunStateToStage1(user);
+    // IMPORTANT: meta progression (playerLevel/playerExp) stays.
+    resetRunStateToStage1(user as any);
 
     user.gamesPlayed += 1;
     user.gamesLost += 1;
@@ -391,6 +441,11 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,
       restartFrom: 'stage1',
+
+      // Meta progression persists
+      playerLevel: (user as any).playerLevel ?? 1,
+      playerExp: (user as any).playerExp ?? 0,
+      expPerLevel: EXP_PER_LEVEL,
     });
   } catch (err) {
     next(err);
@@ -429,6 +484,11 @@ export const getStatus: RequestHandler = async (req, res, next) => {
       powers: user.powers,
       allowedStage,
       nextRefillAt,
+
+      // Meta progression (for UI convenience)
+      playerLevel: (user as any).playerLevel ?? 1,
+      playerExp: (user as any).playerExp ?? 0,
+      expPerLevel: EXP_PER_LEVEL,
     });
   } catch (err) {
     next(err);

@@ -44,6 +44,14 @@ interface IUser {
   createdAt: Date;
   updatedAt: Date;
   lastHeartRefillAt?: Date;
+
+  /**
+   * Persistent meta-progression (farmable across runs).
+   * - Stays on LOSS reset (roguelite run reset).
+   * - Updated on each WIN (including replays).
+   */
+  playerLevel: number; // starts at 1
+  playerExp: number; // 0..(EXP_PER_LEVEL-1), carry handled on award
 }
 
 const powersSchema = new Schema<Powers>(
@@ -102,6 +110,10 @@ const userSchema = new Schema<IUser>(
     gamesLost: { type: Number, default: 0 },
     activeStageRun: { type: activeStageRunSchema },
     lastHeartRefillAt: { type: Date, default: null },
+
+    // Meta progression (SSOT)
+    playerLevel: { type: Number, default: 1, min: 1 },
+    playerExp: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true },
 );
