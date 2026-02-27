@@ -28,6 +28,47 @@ export const getProfile: RequestHandler = async (req, res, next) => {
   }
 };
 
+/**
+ * Get current authenticated user's profile
+ * Secure endpoint - uses JWT token to identify user (no IDOR vulnerability)
+ */
+export const getMyProfile: RequestHandler = async (req, res, next) => {
+  try {
+    const userId = (req as any).userId;
+    
+    console.log(`[getMyProfile] userId from token:`, userId);
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized - no user ID in token' });
+    }
+
+    const user = await User.findById(userId);
+    console.log(`[getMyProfile] found user:`, user ? 'yes' : 'no');
+
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const progress = Object.fromEntries(user.progress);
+
+    res.json({
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      avatar: user.avatar,
+      powers: user.powers,
+      totalScore: user.totalScore,
+      progress,
+      badges: user.badges,
+      gamesPlayed: user.gamesPlayed,
+      gamesWon: user.gamesWon,
+      gamesLost: user.gamesLost,
+      hearts: user.hearts,
+    });
+  } catch (err) {
+    console.error(`[getMyProfile] error:`, err);
+    next(err);
+  }
+};
+
 export const updateAvatar: RequestHandler = async (req, res, next) => {
   try {
     const { id } = req.params;

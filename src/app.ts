@@ -25,6 +25,27 @@ app.use(
   }),
 );
 
+// const allowedOrigins = [
+//   'https://match3-frontend.onrender.com',
+//   /^http:\/\/localhost:\d+$/, // Allow any localhost port for development
+// ];
+
+// app.use(
+//   cors({
+//     origin: (origin, cb) => {
+//
+//       if (!origin) return cb(null, true);
+
+//       const ok = allowedOrigins.some((o) => (o instanceof RegExp ? o.test(origin) : o === origin));
+
+//       cb(ok ? null : new Error('Not allowed by CORS'), ok);
+//     },
+//     credentials: true,
+//     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+//     allowedHeaders: ['Content-Type', 'Authorization'],
+//   }),
+// );
+
 app.use(express.json());
 app.use(cookieParser());
 

@@ -1,6 +1,6 @@
 // src/routes/user.routes.ts
 import { Router } from 'express';
-import { getProfile, updateAvatar, updatePowers } from '#controllers';
+import { getProfile, getMyProfile, updateAvatar, updatePowers } from '#controllers';
 import { z } from 'zod';
 import { authenticateToken, validateBodyZod, validateParamsZod } from '#middlewares';
 
@@ -21,6 +21,11 @@ const powersSchema = z.object({
   operation: z.enum(['set', 'add']).optional(),
 });
 
+// Secure endpoint - returns current authenticated user's profile
+router.get('/me', authenticateToken, getMyProfile);
+router.get('/profile/me', authenticateToken, getMyProfile);
+
+// Legacy endpoint - returns any user's profile (may have IDOR vulnerability)
 router.get('/profile/:id', authenticateToken, validateParamsZod(idParam), getProfile);
 router.patch('/avatar/:id', validateParamsZod(idParam), validateBodyZod(avatarSchema), updateAvatar);
 
