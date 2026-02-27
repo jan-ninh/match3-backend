@@ -7,6 +7,8 @@ import { z } from 'zod';
 const router = Router();
 
 router.get('/top10', top10);
-router.get('/rank/:id', validateParamsZod(z.object({ id: z.string() })), myRank);
+
+// user id is a Mongo ObjectId (24 hex chars)
+router.get('/rank/:id', validateParamsZod(z.object({ id: z.string().min(24).max(24) })), myRank);
 
 export default router;

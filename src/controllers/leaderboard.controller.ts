@@ -1,17 +1,34 @@
 // src/controllers/leaderboard.controller.ts
 import type { RequestHandler } from 'express';
-import type { QueryFilter } from 'mongoose';
-import { AllTimeLeaderboardEntry, type IAllTimeLeaderboardEntry } from '#models';
+import mongoose from 'mongoose';
+import { LeaderboardEntry } from '#models';
+
+type PopulatedUser = { username?: string; avatar?: string } | null;
+
+function ensureObjectId(id: string): mongoose.Types.ObjectId | null {
+  if (!mongoose.Types.ObjectId.isValid(id)) return null;
+  return new mongoose.Types.ObjectId(id);
+}
 
 export const top10: RequestHandler = async (_req, res, next) => {
   try {
-    const entries = await AllTimeLeaderboardEntry.find().sort({ totalLevelsPlayed: 1, metaTier: 1, movesMetric: 1, finishedAt: 1, runId: 1 }).limit(10).lean();
+    const entries = await LeaderboardEntry.find()
+      .sort({ totalScore: -1, updatedAt: -1 })
+      .limit(10)
+      .populate('userId', 'username avatar')
+      .lean();
 
-    const formatted = entries.map((e) => ({
-      username: e.username,
-      avatar: e.avatar,
-      totalScore: e.displayScore,
-    }));
+    const formatted = entries.map((e) => {
+      const u = (e as unknown as { userId?: PopulatedUser }).userId ?? null;
+      const username = (u && u.username) || (e as unknown as { username?: string }).username || 'Unknown';
+      const avatar = (u && u.avatar) || 'default.png';
+      const totalScore = (e as unknown as { totalScore?: unknown }).totalScore;
+      return {
+        username,
+        avatar,
+        totalScore: typeof totalScore === 'number' ? totalScore : Number(totalScore) || 0,
+      };
+    });
 
     res.json({ top10: formatted });
   } catch (err) {
@@ -21,56 +38,44 @@ export const top10: RequestHandler = async (_req, res, next) => {
 
 export const myRank: RequestHandler = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const { id } = req.params as { id: string };
 
-    const me = await AllTimeLeaderboardEntry.findOne({ accountId: id }).lean();
-    if (!me) return res.status(404).json({ error: 'User not in leaderboard' });
+    const userId = ensureObjectId(id);
+    if (!userId) return res.status(400).json({ error: 'Invalid id' });
 
-    const rankQuery: QueryFilter<IAllTimeLeaderboardEntry> = {
-      $or: [
-        { totalLevelsPlayed: { $lt: me.totalLevelsPlayed } },
-        { totalLevelsPlayed: me.totalLevelsPlayed, metaTier: { $lt: me.metaTier } },
-        { totalLevelsPlayed: me.totalLevelsPlayed, metaTier: me.metaTier, movesMetric: { $lt: me.movesMetric } },
-        {
-          totalLevelsPlayed: me.totalLevelsPlayed,
-          metaTier: me.metaTier,
-          movesMetric: me.movesMetric,
-          finishedAt: { $lt: me.finishedAt },
-        },
-        {
-          totalLevelsPlayed: me.totalLevelsPlayed,
-          metaTier: me.metaTier,
-          movesMetric: me.movesMetric,
-          finishedAt: me.finishedAt,
-          runId: { $lt: me.runId },
-        },
-      ],
-    };
-
-    const betterCount = await AllTimeLeaderboardEntry.countDocuments(rankQuery);
-
-    const top10Entries = await AllTimeLeaderboardEntry.find()
-      .sort({ totalLevelsPlayed: 1, metaTier: 1, movesMetric: 1, finishedAt: 1, runId: 1 })
-      .limit(10)
+    const me = await LeaderboardEntry.findOne({ userId })
+      .populate('userId', 'username avatar')
       .lean();
 
-    const top10 = top10Entries.map((e) => ({
-      username: e.username,
-      avatar: e.avatar,
-      totalScore: e.displayScore,
-    }));
+    if (!me) return res.status(404).json({ error: 'User not in leaderboard' });
+
+    const myScoreRaw = (me as unknown as { totalScore?: unknown }).totalScore;
+    const myScore = typeof myScoreRaw === 'number' ? myScoreRaw : Number(myScoreRaw) || 0;
+
+    const betterCount = await LeaderboardEntry.countDocuments({ totalScore: { $gt: myScore } });
+
+    const top10Entries = await LeaderboardEntry.find()
+      .sort({ totalScore: -1, updatedAt: -1 })
+      .limit(10)
+      .populate('userId', 'username avatar')
+      .lean();
+
+    const top10 = top10Entries.map((e) => {
+      const u = (e as unknown as { userId?: PopulatedUser }).userId ?? null;
+      const username = (u && u.username) || (e as unknown as { username?: string }).username || 'Unknown';
+      const avatar = (u && u.avatar) || 'default.png';
+      const totalScore = (e as unknown as { totalScore?: unknown }).totalScore;
+      return {
+        username,
+        avatar,
+        totalScore: typeof totalScore === 'number' ? totalScore : Number(totalScore) || 0,
+      };
+    });
 
     res.json({
       top10,
       yourRank: betterCount + 1,
-      yourScore: me.displayScore,
-      yourRankKey: {
-        totalLevelsPlayed: me.totalLevelsPlayed,
-        metaTier: me.metaTier,
-        movesMetric: me.movesMetric,
-        finishedAt: me.finishedAt,
-        runId: me.runId,
-      },
+      yourScore: myScore,
     });
   } catch (err) {
     next(err);
