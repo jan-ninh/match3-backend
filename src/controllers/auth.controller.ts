@@ -4,17 +4,23 @@ import { hashPassword, comparePassword, createAccessToken, createRefreshToken } 
 import { REFRESH_TOKEN_TTL } from '#config';
 
 function setAuthCookie(res: Response, accessToken: string, refreshToken: string) {
-  res.cookie('accessToken', accessToken, {
+  const isProd = process.env.NODE_ENV === 'production';
+
+  const sameSite: 'none' | 'lax' = isProd ? 'none' : 'lax';
+  const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 15 * 60 * 1000, // 15 minutes
+    secure: isProd,
+    sameSite: sameSite,
+    path: '/',
+  };
+
+  res.cookie('accessToken', accessToken, {
+    ...cookieOptions,
+    maxAge: 15 * 60 * 1000,
   });
 
   res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    ...cookieOptions,
     maxAge: REFRESH_TOKEN_TTL * 1000,
   });
 }
@@ -82,8 +88,16 @@ export const logout: RequestHandler = async (req, res, next) => {
       await RefreshToken.findOneAndDelete({ token: refreshToken });
     }
 
-    res.clearCookie('accessToken');
-    res.clearCookie('refreshToken');
+    const isProd = process.env.NODE_ENV === 'production';
+
+    const clearOptions = {
+      path: '/',
+      sameSite: isProd ? ('none' as const) : ('lax' as const),
+      secure: isProd,
+    };
+
+    res.clearCookie('accessToken', clearOptions);
+    res.clearCookie('refreshToken', clearOptions);
 
     res.json({ message: 'Logged out successfully' });
   } catch (err) {
