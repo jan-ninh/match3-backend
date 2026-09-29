@@ -11,7 +11,11 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     return;
   }
 
-  console.error('[error]', err);
+  if (typeof err === 'object' && err !== null && 'code' in err && err.code === 11000) {
+    res.status(409).json({ error: 'Account conflict' });
+    return;
+  }
+  console.error('[error] request failed');
 
   res.status(500).json({
     error: 'Internal Server Error',

@@ -1,39 +1,20 @@
-// src/app.ts
 import express from 'express';
 import cors from 'cors';
 import { routes } from './routes/index.ts';
 import { notFoundHandler, errorHandler } from '#middlewares';
-
+import { env } from './utils/env.ts';
 export const app = express();
-
-app.set('trust proxy', 1);
-
-// CORS and JSON parsing MUST come FIRST
-const allowedOrigins = ['http://localhost:5173', 'https://match3-frontend.onrender.com'];
-
+app.disable('x-powered-by');
+app.set('trust proxy', env.trustProxyHops);
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error('Not allowed by CORS'));
-    },
+    origin: (origin, callback) => callback(null, Boolean(origin && env.allowedOrigins.includes(origin))),
+    credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   }),
 );
-
-app.use(express.json());
-
-// Request logging
-app.use((req, _res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  next();
-});
-
-// THEN mount routes
+app.use(express.json({ limit: '32kb' }));
 app.use(routes);
-
-// Error handlers LAST
 app.use(notFoundHandler);
 app.use(errorHandler);

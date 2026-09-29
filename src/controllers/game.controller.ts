@@ -1,3 +1,5 @@
+import { accountId } from '../middlewares/auth.middleware.ts';
+import { env } from '../utils/env.ts';
 // src/controllers/game.controller.ts
 import type { Request, RequestHandler } from 'express';
 import { User, LeaderboardEntry, type PowerKey } from '#models';
@@ -23,21 +25,8 @@ const FINAL_STAGE = 12;
  * - env: ALLOW_STAGE_SKIP=1
  * - OR request header: x-match3-allow-stage-skip: 1
  */
-function isStageSkipEnabled(req: Request): boolean {
-  if (process.env.ALLOW_STAGE_SKIP === '1') return true;
-
-  // Convenience: in local dev you'll usually have NODE_ENV=development
-  // (we intentionally do NOT treat empty/undefined NODE_ENV as dev).
-  const env = String(process.env.NODE_ENV ?? '')
-    .trim()
-    .toLowerCase();
-  if (env && env !== 'production') return true;
-
-  const h = req.header('x-match3-allow-stage-skip');
-  if (!h) return false;
-
-  const v = String(h).trim().toLowerCase();
-  return v === '1' || v === 'true' || v === 'yes';
+function isStageSkipEnabled(_req: Request): boolean {
+  return env.NODE_ENV === 'development' && process.env.ALLOW_STAGE_SKIP === '1';
 }
 
 function isValidStageNumber(n: number): boolean {
@@ -130,7 +119,8 @@ function resetRunStateToStage1(user: {
 
 export const startStage: RequestHandler = async (req, res, next) => {
   try {
-    const { id, stageNumber } = req.params as unknown as { id: string; stageNumber: string };
+    const id = accountId(req);
+    const stageNumber = String(req.params.stageNumber);
     const stageNum = parseInt(stageNumber, 10);
     if (!isValidStageNumber(stageNum)) {
       return res.status(400).json({ error: 'Invalid stageNumber' });
@@ -222,7 +212,8 @@ export const startStage: RequestHandler = async (req, res, next) => {
 
 export const completeStage: RequestHandler = async (req, res, next) => {
   try {
-    const { id, stageNumber } = req.params as unknown as { id: string; stageNumber: string };
+    const id = accountId(req);
+    const stageNumber = String(req.params.stageNumber);
     const stageNum = parseInt(stageNumber, 10);
     if (!isValidStageNumber(stageNum)) {
       return res.status(400).json({ error: 'Invalid stageNumber' });
@@ -354,7 +345,7 @@ function checkAndAwardBadges(user: any) {
 
 export const loseGame: RequestHandler = async (req, res, next) => {
   try {
-    const { id } = req.params as { id: string };
+    const id = accountId(req);
 
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -404,7 +395,7 @@ export const loseGame: RequestHandler = async (req, res, next) => {
 
 export const abandonGame: RequestHandler = async (req, res, next) => {
   try {
-    const { id } = req.params as { id: string };
+    const id = accountId(req);
 
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -454,13 +445,17 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
 
 export const getStatus: RequestHandler = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const id = accountId(req);
     const user = await User.findById(id);
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const maxHearts = 3;
-    const { hearts: currentHearts, lastRefillAt: newLastRefillAt } = refillHearts(user.hearts, user.lastHeartRefillAt || new Date(), maxHearts);
+    const { hearts: currentHearts, lastRefillAt: newLastRefillAt } = refillHearts(
+      user.hearts,
+      user.lastHeartRefillAt || new Date(),
+      maxHearts,
+    );
 
     // Update user if hearts were refilled
     if (currentHearts !== user.hearts) {

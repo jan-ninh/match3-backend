@@ -27,7 +27,7 @@ interface ActiveStageRun {
   stageSelectedBoosters: Powers;
 }
 
-interface IUser {
+export interface IUser {
   email: string;
   username: string;
   password: string;
@@ -94,7 +94,7 @@ const userSchema = new Schema<IUser>(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, match: [/^\S+@\S+\.\S+$/, 'Email is not valid'] },
     username: { type: String, required: true, unique: true, trim: true },
-    password: { type: String, required: true },
+    password: { type: String, required: true, select: false },
     avatar: {
       type: String,
       enum: ['default.png', 'avatar1.png', 'avatar2.png', 'avatar3.png', 'avatar4.png', 'avatar5.png', 'avatar6.png'],

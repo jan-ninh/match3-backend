@@ -37,11 +37,10 @@
   },
   "scripts": {
     "dev": "node --env-file=.env --watch --conditions development src/server.ts",
-    "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "tsc",
     "start": "node dist/server.js",
     "start:local": "node --env-file=.env dist/server.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --conditions development --test tests/*.test.mjs",
     "render-build": "npm install --include=dev && npm run build"
   },
   "repository": {
@@ -76,6 +75,7 @@
     "@types/mongoose": "^5.11.96",
     "@types/node": "^24.10.10",
     "@types/node-schedule": "^2.1.8",
+    "mongodb-memory-server": "^11.3.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.20.5",

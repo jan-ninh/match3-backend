@@ -1,3 +1,4 @@
+import { accountId } from '../middlewares/auth.middleware.ts';
 // src/controllers/leaderboard.controller.ts
 import type { RequestHandler } from 'express';
 import mongoose from 'mongoose';
@@ -38,14 +39,12 @@ export const top10: RequestHandler = async (_req, res, next) => {
 
 export const myRank: RequestHandler = async (req, res, next) => {
   try {
-    const { id } = req.params as { id: string };
+    const id = accountId(req);
 
     const userId = ensureObjectId(id);
     if (!userId) return res.status(400).json({ error: 'Invalid id' });
 
-    const me = await LeaderboardEntry.findOne({ userId })
-      .populate('userId', 'username avatar')
-      .lean();
+    const me = await LeaderboardEntry.findOne({ userId }).populate('userId', 'username avatar').lean();
 
     if (!me) return res.status(404).json({ error: 'User not in leaderboard' });
 
