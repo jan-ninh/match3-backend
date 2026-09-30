@@ -3,6 +3,7 @@ import { authenticate, matchAccountParam } from '../middlewares/auth.middleware.
 import { validateBodyZod, validateParamsZod } from '#middlewares';
 import { startCommand, terminalCommand, rewardCommand, legacyAbandonCommand, idParam } from '../schemas/gameplay.schemas.ts';
 import {
+  newCampaign,
   startAttempt,
   finishAttempt,
   claimReward,
@@ -19,6 +20,7 @@ router.get('/status', getGameplaySnapshot);
 router.post('/attempts/start', validateBodyZod(startCommand), startAttempt);
 router.post('/attempts/terminal', validateBodyZod(terminalCommand), finishAttempt);
 router.post('/rewards/claim', validateBodyZod(rewardCommand), claimReward);
+router.post('/new-run', validateBodyZod(legacyAbandonCommand), newCampaign);
 router.post('/legacy-abandon', validateBodyZod(legacyAbandonCommand), abandonLegacy);
 router.get('/operations/:id', validateParamsZod(idParam), getOperation);
 router.get('/attempts/:id', validateParamsZod(idParam), getAttempt);

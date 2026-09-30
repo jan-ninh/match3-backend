@@ -1,3 +1,4 @@
+import type { CampaignProjection } from './AccountCampaign.model.ts';
 // src/models/User.model.ts
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
@@ -43,6 +44,7 @@ export interface PendingReward {
   quantity: number;
 }
 export interface IUser {
+  campaign?: CampaignProjection;
   gameplayRevision: number;
   gameplayRunId?: string;
   activeAttempt?: AccountActiveAttempt;
@@ -132,6 +134,7 @@ const pendingRewardSchema = new Schema<PendingReward>(
 );
 const userSchema = new Schema<IUser>(
   {
+    campaign: { type: Schema.Types.Mixed },
     gameplayRevision: { type: Number, default: 0, min: 0 },
     gameplayRunId: { type: String },
     activeAttempt: { type: accountAttemptSchema },

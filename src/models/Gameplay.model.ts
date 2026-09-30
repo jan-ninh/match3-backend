@@ -49,8 +49,8 @@ export const StageAttempt = mongoose.model<GameplayAttempt>('GameplayAttempt', a
 export interface GameplayReceipt {
   operationId: string;
   ownerId: mongoose.Types.ObjectId;
-  command: 'START' | 'TERMINAL' | 'REWARD' | 'LEGACY_ABANDON';
-  attemptId: string;
+  command: 'START' | 'TERMINAL' | 'REWARD' | 'LEGACY_ABANDON' | 'NEW_RUN';
+  attemptId: string | null;
   payloadHash: string;
   status: 'committed';
   createdAt: Date;
@@ -61,8 +61,8 @@ export interface GameplayReceipt {
 const receiptSchema = new Schema<GameplayReceipt>({
   operationId: { type: String, required: true, unique: true },
   ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  command: { type: String, enum: ['START', 'TERMINAL', 'REWARD', 'LEGACY_ABANDON'], required: true },
-  attemptId: { type: String, required: true },
+  command: { type: String, enum: ['START', 'TERMINAL', 'REWARD', 'LEGACY_ABANDON', 'NEW_RUN'], required: true },
+  attemptId: { type: String, default: null },
   payloadHash: { type: String, required: true },
   status: { type: String, enum: ['committed'], required: true },
   createdAt: { type: Date, required: true },

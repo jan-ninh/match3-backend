@@ -6,7 +6,7 @@ import { StageAttempt } from '../models/Gameplay.model.ts';
 import { currentUser } from '../services/currentUser.ts';
 import { HttpError } from '../utils/httpError.ts';
 const command =
-  (kind: 'START' | 'TERMINAL' | 'REWARD' | 'LEGACY_ABANDON'): RequestHandler =>
+  (kind: 'START' | 'TERMINAL' | 'REWARD' | 'LEGACY_ABANDON' | 'NEW_RUN'): RequestHandler =>
   async (req, res, next) => {
     try {
       res.json(await executeGameplay(accountId(req), { kind, body: req.body }));
@@ -17,7 +17,8 @@ const command =
 export const startAttempt = command('START'),
   finishAttempt = command('TERMINAL'),
   claimReward = command('REWARD'),
-  abandonLegacy = command('LEGACY_ABANDON');
+  abandonLegacy = command('LEGACY_ABANDON'),
+  newCampaign = command('NEW_RUN');
 export const getGameplaySnapshot: RequestHandler = async (req, res, next) => {
   try {
     const user = await User.findById(accountId(req));

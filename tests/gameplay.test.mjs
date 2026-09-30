@@ -21,7 +21,7 @@ Object.assign(process.env, {
 const { app } = await import('../src/app.ts');
 const { User } = await import('../src/models/User.model.ts');
 const { StageAttempt, OperationReceipt } = await import('../src/models/Gameplay.model.ts');
-const { LeaderboardEntry } = await import('../src/models/Leaderboard.model.ts');
+const { AccountCampaignRun, CampaignBestEntry: LeaderboardEntry } = await import('../src/models/AccountCampaign.model.ts');
 let mongo,
   server,
   base,
@@ -52,15 +52,13 @@ async function call(path, owner, body, origin = base) {
   return { status: res.status, data: await res.json() };
 }
 async function account() {
+  // Isolated fixture creation avoids exercising the production registration IP limiter dozens of times.
   const n = ++sequence;
-  const a = await call('/api/auth/register', null, {
-    email: 'game' + n + '@example.test',
-    username: 'Game' + n,
-    password: 'Test123!',
-    confirmPassword: 'Test123!',
-  });
-  assert.equal(a.status, 201);
-  return { token: a.data.accessToken, id: a.data.user.id, snapshot: a.data.user };
+  const user = await User.create({ email: 'game' + n + '@example.test', username: 'Game' + n, password: 'isolated-unused-password' });
+  const { createSession } = await import('../src/services/session.service.ts');
+  const { currentUser } = await import('../src/services/currentUser.ts');
+  const token = await createSession(String(user._id), { headers: {} }, { cookie: () => {} });
+  return { token, id: String(user._id), snapshot: JSON.parse(JSON.stringify(currentUser(user))) };
 }
 async function command(owner, path, body) {
   const r = await call(path, owner, body);
@@ -140,8 +138,8 @@ test('WIN and inventory apply once; retry cannot farm score/EXP/stats; conflicti
   assert.equal(repeat.data.snapshot.revision, 2);
   assert.equal((await call('/api/game/attempts/terminal', a, { ...body, outcome: 'LOSS' })).status, 409);
   assert.equal((await call('/api/game/attempts/terminal', a, { ...body, operationId: randomUUID(), expectedRevision: 2 })).status, 409);
-  const entry = await LeaderboardEntry.findOne({ userId: a.id });
-  assert.equal(entry.totalScore, 800);
+  const entry = await LeaderboardEntry.findOne({ ownerId: a.id });
+  assert.equal(entry, null); // In-progress score is no longer published as a finalized campaign result.
   const attempt = await StageAttempt.findOne({ attemptId: body.attemptId });
   assert.equal(attempt.status, 'WIN');
   assert.equal(attempt.usage.length, 2);
@@ -266,7 +264,8 @@ test('transaction rollback leaves attempt retryable with same operation ID and n
 });
 test('an actual fresh server process recognizes committed receipt and cannot reapply effects', async () => {
   const a = await account();
-  await start(a);
+  for (let stage = 1; stage <= 10; stage++) { await start(a, stage); await finish(a, 'WIN'); }
+  await start(a, 11);
   const body = terminalBody(a);
   await finishWithBody();
   async function finishWithBody() {
@@ -292,8 +291,11 @@ test('an actual fresh server process recognizes committed receipt and cannot rea
     const fresh = 'http://127.0.0.1:' + port;
     const result = await call('/api/game/attempts/terminal', a, body, fresh);
     assert.equal(result.status, 200);
-    assert.equal(result.data.snapshot.totalScore, 800);
-    assert.equal(result.data.snapshot.gamesWon, 1);
+    assert.equal(result.data.snapshot.campaign.status, 'COMPLETED');
+    assert.equal(result.data.receipt.resultSnapshot.campaign.result.score, 8800);
+    assert.equal((await call('/api/leaderboard/me', a, undefined, fresh)).data.best.score, 8800);
+    assert.equal(result.data.snapshot.totalScore, 8800);
+    assert.equal(result.data.snapshot.gamesWon, 11);
     assert.equal((await call('/api/game/operations/' + body.operationId, a, undefined, fresh)).data.receipt.operationId, body.operationId);
   } finally {
     child.stdin.write('stop\n');
@@ -366,4 +368,226 @@ test('training uses the catalog infinite-item policy without decrement; reward c
     200,
   );
   assert.equal(a.snapshot.powers.laser, 120);
+});
+
+const through = async (a, n) => {
+  for (let stage = a.snapshot.frontier; stage <= n; stage++) {
+    assert.equal((await start(a, stage)).status, 200);
+    assert.equal((await finish(a, 'WIN')).status, 200);
+  }
+};
+const newRun = (a) => command(a, '/api/game/new-run', { operationId: randomUUID(), expectedRevision: a.snapshot.revision });
+test('canonical run identity spans authoritative stages and reads, without route/session-created campaigns', async () => {
+  const a = await account();
+  await through(a, 3);
+  const id = a.snapshot.runId;
+  assert.equal(a.snapshot.campaign.runId, id);
+  assert.deepEqual(a.snapshot.campaign.completedStages, [1, 2, 3]);
+  for (const path of ['/api/auth/me', '/api/game/snapshot', '/api/campaign/current']) {
+    const r = await call(path, a);
+    assert.equal(r.data.runId, id);
+    assert.equal(r.data.campaign.score, 2400);
+  }
+  assert.equal(await AccountCampaignRun.countDocuments({ ownerId: a.id }), 1);
+  assert.equal((await call('/api/campaign/start', a, {})).status, 410);
+  assert.equal(await AccountCampaignRun.countDocuments({ ownerId: a.id }), 1);
+});
+test('stage 11 concurrent/duplicate WIN finalizes one immutable result, best entry and receipt; lost acknowledgement reconciles it', async () => {
+  const a = await account();
+  await through(a, 10);
+  await start(a, 11);
+  const body = terminalBody(a),
+    id = a.snapshot.runId;
+  const replies = await Promise.all([call('/api/game/attempts/terminal', a, body), call('/api/game/attempts/terminal', a, body)]);
+  assert.deepEqual(
+    replies.map((r) => r.status),
+    [200, 200],
+  );
+  assert.deepEqual(replies[0].data.receipt, replies[1].data.receipt);
+  const restored = await call('/api/game/operations/' + body.operationId, a);
+  a.snapshot = restored.data.snapshot;
+  assert.equal(a.snapshot.campaign.status, 'COMPLETED');
+  assert.equal(a.snapshot.campaign.result.score, 8800);
+  assert.equal(a.snapshot.sandboxUnlocked, true);
+  assert.equal(a.snapshot.frontier, 12);
+  assert.equal(await AccountCampaignRun.countDocuments({ runId: id, status: 'COMPLETED' }), 1);
+  assert.equal(await LeaderboardEntry.countDocuments({ ownerId: a.id }), 1);
+  assert.equal((await call('/api/game/attempts/terminal', a, body)).data.snapshot.campaign.result.score, 8800);
+  assert.equal((await start(a, 11)).status, 403);
+  assert.equal((await start(a, 1)).status, 403);
+  assert.equal((await call('/api/game/attempts/terminal', a, { ...body, operationId: randomUUID(), expectedRevision: a.snapshot.revision })).status, 409);
+});
+test('stage 12 sandbox WIN/LOSS/ABANDON cannot alter finalized run, best score or create a campaign; subsequent regular run is explicit', async () => {
+  for (const outcome of ['WIN', 'LOSS', 'ABANDON']) {
+    const a = await account();
+    await through(a, 11);
+    const run = await AccountCampaignRun.findOne({ runId: a.snapshot.runId }).lean(),
+      entry = await LeaderboardEntry.findOne({ ownerId: a.id }).lean();
+    await start(a, 12);
+    assert.equal((await finish(a, outcome)).status, 200);
+    assert.deepEqual(await AccountCampaignRun.findOne({ runId: run.runId }).lean(), run);
+    assert.deepEqual(await LeaderboardEntry.findOne({ ownerId: a.id }).lean(), entry);
+    assert.deepEqual(a.snapshot.campaign.result, JSON.parse(JSON.stringify(run.result)));
+    if (outcome === 'WIN') {
+      const id = a.snapshot.runId;
+      await newRun(a);
+      assert.notEqual(a.snapshot.runId, id);
+      assert.equal(a.snapshot.frontier, 1);
+      assert.equal(a.snapshot.sandboxUnlocked, false);
+    } else assert.equal(a.snapshot.frontier, 1);
+    await start(a, 1);
+    assert.equal(a.snapshot.campaign.status, 'ACTIVE');
+    assert.equal(await AccountCampaignRun.countDocuments({ ownerId: a.id }), 2);
+    assert.equal((await LeaderboardEntry.findOne({ ownerId: a.id })).score, 8800);
+  }
+});
+test('LOSS/ABANDON close ACTIVE run as RESET without publishing; NEW_RUN is repeat-safe without heart or meta penalty', async () => {
+  for (const outcome of ['LOSS', 'ABANDON']) {
+    const a = await account();
+    await through(a, 2);
+    const id = a.snapshot.runId;
+    await start(a, 3);
+    await finish(a, outcome);
+    const run = await AccountCampaignRun.findOne({ runId: id });
+    assert.equal(run.status, 'RESET');
+    assert.equal(run.resetReason, outcome);
+    assert.equal(run.result, null);
+    assert.equal(await LeaderboardEntry.countDocuments({ ownerId: a.id }), 0);
+  }
+  const a = await account();
+  await through(a, 1);
+  const body = { operationId: randomUUID(), expectedRevision: a.snapshot.revision },
+    id = a.snapshot.runId;
+  const r = await command(a, '/api/game/new-run', body);
+  assert.equal(r.status, 200);
+  assert.equal(r.data.receipt.attemptId, null);
+  assert.equal(a.snapshot.hearts, 3);
+  assert.equal(a.snapshot.playerExp, 1000);
+  assert.equal(a.snapshot.gamesLost, 0);
+  assert.equal((await AccountCampaignRun.findOne({ runId: id })).resetReason, 'NEW_RUN');
+  const again = await call('/api/game/new-run', a, body);
+  assert.equal(again.data.snapshot.runId, a.snapshot.runId);
+  await start(a, 1);
+  assert.equal((await newRun(a)).status, 409);
+});
+test('best-result comparison preserves higher or earlier equal history; better score replaces once; lower results remain immutable history', async () => {
+  for (const { score, replace } of [
+    { score: 9000, replace: false },
+    { score: 8800, replace: false },
+    { score: 8000, replace: true },
+  ]) {
+    const a = await account(),
+      oldId = randomUUID();
+    await LeaderboardEntry.create({
+      ownerId: a.id,
+      runId: oldId,
+      score,
+      finalizedAt: new Date(0),
+      scoreVersion: 'regular-campaign-points-v1',
+      username: 'Previous',
+      avatar: 'default.png',
+    });
+    await through(a, 11);
+    const best = await LeaderboardEntry.findOne({ ownerId: a.id });
+    assert.equal(best.runId, replace ? a.snapshot.runId : oldId);
+    assert.equal(best.score, replace ? 8800 : score);
+    assert.equal(await AccountCampaignRun.countDocuments({ ownerId: a.id, status: 'COMPLETED' }), 1);
+    const op = (await AccountCampaignRun.findOne({ runId: a.snapshot.runId })).finalOperationId;
+    const receipt = await call('/api/game/operations/' + op, a);
+    assert.equal(receipt.data.snapshot.campaign.result.score, 8800);
+    assert.equal(await LeaderboardEntry.countDocuments({ ownerId: a.id }), 1);
+  }
+});
+test('public top is bounded, deterministic and safe; verified rank uses all results rather than top-ten subset and aliases share one truth', async () => {
+  const a = await account(),
+    b = await account();
+  const date = new Date('2020-01-01');
+  const owners = [a.id, b.id, ...Array.from({ length: 11 }, () => String(new mongoose.Types.ObjectId()))];
+  for (let i = 0; i < owners.length; i++)
+    await LeaderboardEntry.create({
+      ownerId: owners[i],
+      runId: randomUUID(),
+      score: 20000 - i * 100,
+      finalizedAt: date,
+      scoreVersion: 'regular-campaign-points-v1',
+      username: 'Public' + i,
+      avatar: 'default.png',
+    });
+  const last = owners.at(-1);
+  await LeaderboardEntry.updateOne({ ownerId: a.id }, { $set: { score: 21000 } });
+  await LeaderboardEntry.updateOne({ ownerId: b.id }, { $set: { score: 21000 } });
+  const top = (await call('/api/leaderboard/top')).data;
+  assert.equal(top.entries.length, 10);
+  assert.deepEqual(
+    top.entries.slice(0, 2).map((e) => e.accountId),
+    [a.id, b.id].sort(),
+  );
+  assert.deepEqual(
+    top.entries.map((e) => e.rank),
+    Array.from({ length: 10 }, (_, i) => i + 1),
+  );
+  for (const row of top.entries) assert.deepEqual(Object.keys(row).sort(), ['accountId', 'avatar', 'finalizedAt', 'rank', 'score', 'scoreVersion', 'username']);
+  assert.deepEqual((await call('/api/leaderboard/top10')).data, top);
+  const own = await call('/api/leaderboard/me', b);
+  assert.equal(own.status, 200);
+  assert.equal(own.data.best.accountId, b.id);
+  assert.equal(own.data.rank, [a.id, b.id].sort().indexOf(b.id) + 1);
+  assert.equal((await call('/api/leaderboard/rank/' + a.id, b)).status, 403);
+  await LeaderboardEntry.updateOne({ ownerId: b.id }, { $set: { score: 1 } });
+  assert.ok((await call('/api/leaderboard/me', b)).data.rank > 10);
+  assert.equal((await call('/api/leaderboard/me')).status, 401);
+  const empty = await account();
+  assert.deepEqual((await call('/api/leaderboard/me', empty)).data, { rank: null, best: null, scoreVersion: 'regular-campaign-points-v1' });
+});
+test('campaign privacy and legacy source quarantine: supplied IDs, foreign receipt and telemetry cannot publish another truth', async () => {
+  const a = await account(),
+    b = await account();
+  await through(a, 10);
+  await start(a, 11);
+  const body = terminalBody(a);
+  assert.equal((await call('/api/game/attempts/terminal', b, { ...body, expectedRevision: 0 })).status, 404);
+  assert.equal((await call('/api/game/attempts/terminal', a, { ...body, ownerId: b.id })).status, 400);
+  assert.equal((await call('/api/campaign/current', b)).data.campaign, null);
+  assert.equal((await call('/api/campaign/current')).status, 401);
+  for (const path of ['/start', '/levelEnd', '/levelAbort'])
+    assert.equal((await call('/api/campaign' + path, a, { CAMPAIGN_ID: a.snapshot.runId, OUTCOME: 'WIN', LEVEL_INDEX: 12 })).status, 410);
+  const { LeaderboardEntry: LegacyEntry } = await import('../src/models/Leaderboard.model.ts');
+  await LegacyEntry.create({ userId: a.id, username: 'Legacy999', totalScore: 999999 });
+  assert.equal(
+    (await call('/api/leaderboard/top')).data.entries.some((e) => e.username === 'Legacy999'),
+    false,
+  );
+  assert.equal((await finish(a, 'WIN')).status, 200);
+  const finalOperation = (await AccountCampaignRun.findOne({ runId: a.snapshot.runId })).finalOperationId;
+  assert.equal((await call('/api/game/operations/' + finalOperation, b)).status, 404);
+});
+test('finalization failure rolls back gameplay, campaign and best together; same-ID retry recovers complete result', async () => {
+  const a = await account();
+  await through(a, 10);
+  await start(a, 11);
+  const body = terminalBody(a),
+    original = OperationReceipt.create;
+  OperationReceipt.create = async function (...args) {
+    await original.apply(this, args);
+    throw Error('fail after campaign and best, before commit');
+  };
+  try {
+    assert.equal((await call('/api/game/attempts/terminal', a, body)).status, 500);
+  } finally {
+    OperationReceipt.create = original;
+  }
+  assert.equal((await AccountCampaignRun.findOne({ runId: a.snapshot.runId })).status, 'ACTIVE');
+  assert.equal(await LeaderboardEntry.countDocuments({ ownerId: a.id }), 0);
+  assert.equal((await StageAttempt.findOne({ attemptId: body.attemptId })).status, 'active');
+  assert.equal((await command(a, '/api/game/attempts/terminal', body)).data.snapshot.campaign.status, 'COMPLETED');
+});
+test('historical partial progress cannot silently become a canonical ranking result; explicit new run restores campaign eligibility', async () => {
+  const a = await account();
+  await User.updateOne({ _id: a.id }, { $set: { 'progress.stage1': { completed: true, points: 800 }, gameplayRunId: randomUUID() } });
+  a.snapshot = (await call('/api/auth/me', a)).data;
+  assert.equal(a.snapshot.campaignNeedsReset, true);
+  assert.equal((await start(a, 2)).status, 409);
+  assert.equal((await newRun(a)).status, 200);
+  assert.equal((await start(a, 1)).status, 200);
+  assert.equal(a.snapshot.campaign.score, 0);
 });

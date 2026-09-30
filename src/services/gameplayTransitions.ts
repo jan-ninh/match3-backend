@@ -2,7 +2,8 @@ import mongoose from 'mongoose';
 import { randomUUID, createHash } from 'node:crypto';
 import { User } from '../models/User.model.ts';
 import type { IUser, AccountActiveAttempt, Powers } from '../models/User.model.ts';
-import { LeaderboardEntry } from '../models/Leaderboard.model.ts';
+import { AccountCampaignRun, CampaignBestEntry } from '../models/AccountCampaign.model.ts';
+import { beginCampaign, winCampaign, closeCampaign } from './accountCampaign.ts';
 import { StageAttempt, OperationReceipt } from '../models/Gameplay.model.ts';
 import type { GameplayReceipt, Usage } from '../models/Gameplay.model.ts';
 import { currentUser } from './currentUser.ts';
@@ -25,7 +26,8 @@ type Input =
   | { kind: 'START'; body: StartCommand }
   | { kind: 'TERMINAL'; body: TerminalCommand }
   | { kind: 'REWARD'; body: RewardCommand }
-  | { kind: 'LEGACY_ABANDON'; body: { operationId: string; expectedRevision: number } };
+  | { kind: 'LEGACY_ABANDON'; body: { operationId: string; expectedRevision: number } }
+  | { kind: 'NEW_RUN'; body: { operationId: string; expectedRevision: number } };
 export function receiptDTO(r: GameplayReceipt) {
   return {
     operationId: r.operationId,
@@ -77,7 +79,8 @@ export async function executeGameplay(ownerId: string, input: Input) {
   // Do not serve writes before the uniqueness indexes establishing these invariants are ready.
   await StageAttempt.init();
   await OperationReceipt.init();
-  await LeaderboardEntry.init();
+  await AccountCampaignRun.init();
+  await CampaignBestEntry.init();
   const session = await mongoose.startSession();
   try {
     const result = await session.withTransaction(
@@ -94,7 +97,7 @@ export async function executeGameplay(ownerId: string, input: Input) {
         if ((input.kind !== 'TERMINAL' && revision !== input.body.expectedRevision) || input.body.expectedRevision > revision)
           throw new HttpError(409, 'Account revision changed; reconcile first');
         const now = new Date();
-        let attemptId: string;
+        let attemptId: string | null = null;
         if (input.kind === 'START') {
           const { stageNumber } = input.body;
           if (user.activeAttempt) throw new HttpError(409, 'An account attempt is already active; abandon it explicitly');
@@ -103,6 +106,7 @@ export async function executeGameplay(ownerId: string, input: Input) {
           if (!devSkip && stageNumber !== frontier(user.progress)) throw new HttpError(403, 'Stage is not currently playable');
           // Development may select a stage, but never fabricates predecessor completion.
           user.gameplayRunId ||= randomUUID();
+          await beginCampaign(user, stageNumber, now, revision, session);
           if (stageNumber === 1) user.powers = { ...ACCOUNT_RUN_START_POWERS };
           for (const key of POWER_KEYS)
             if (!Number.isSafeInteger(user.powers[key]) || user.powers[key] < 0) throw new HttpError(409, 'Invalid account inventory');
@@ -121,6 +125,10 @@ export async function executeGameplay(ownerId: string, input: Input) {
           await StageAttempt.create([{ ...binding, ownerId: user._id, rulesVersion: RULES_VERSION, status: 'active', usage: [], rewardEligible: false }], {
             session,
           });
+        } else if (input.kind === 'NEW_RUN') {
+          if (user.activeAttempt || user.activeStageRun) throw new HttpError(409, 'Resolve the active attempt before new campaign');
+          await closeCampaign(user, 'NEW_RUN', now, revision, session);
+          resetRun(user);
         } else if (input.kind === 'LEGACY_ABANDON') {
           if (user.activeAttempt || !user.activeStageRun) throw new HttpError(409, 'No interrupted legacy stage');
           const stage = Number(user.activeStageRun.stageId.replace('stage', ''));
@@ -150,6 +158,7 @@ export async function executeGameplay(ownerId: string, input: Input) {
             ],
             { session },
           );
+          await closeCampaign(user, 'ABANDON', now, revision, session);
           lose(user);
         } else {
           attemptId = input.body.attemptId;
@@ -185,6 +194,7 @@ export async function executeGameplay(ownerId: string, input: Input) {
               if (attempt.stageNumber < 12 && !user.progress.has('stage' + (attempt.stageNumber + 1)))
                 user.progress.set('stage' + (attempt.stageNumber + 1), { completed: false, points: 0 });
               user.totalScore += points;
+              await winCampaign(user, attempt, operationId, points, now, revision, session);
               const oldLevel = user.playerLevel;
               const exp = user.playerExp + EXP_PER_WIN;
               user.playerLevel += Math.floor(exp / EXP_PER_LEVEL);
@@ -198,7 +208,10 @@ export async function executeGameplay(ownerId: string, input: Input) {
               user.gamesWon++;
               user.activeAttempt = undefined;
               user.activeStageRun = undefined;
-            } else lose(user);
+            } else {
+              await closeCampaign(user, outcome, now, revision, session);
+              lose(user);
+            }
             attempt.status = outcome;
             attempt.terminalAt = now;
             attempt.terminalRevision = revision + 1;
@@ -209,12 +222,6 @@ export async function executeGameplay(ownerId: string, input: Input) {
         }
         user.gameplayRevision = revision + 1;
         await user.save({ session });
-        if (input.kind === 'TERMINAL' || input.kind === 'LEGACY_ABANDON')
-          await LeaderboardEntry.findOneAndUpdate(
-            { userId: user._id },
-            { username: user.username, totalScore: user.totalScore, gamesWon: user.gamesWon, gamesLost: user.gamesLost },
-            { upsert: true, session },
-          );
         const resultSnapshot = safeJSON(currentUser(user));
         const [receipt] = await OperationReceipt.create(
           [
