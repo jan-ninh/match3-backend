@@ -41,7 +41,7 @@
     "start": "node dist/server.js",
     "start:local": "node --env-file=.env dist/server.js",
     "test": "node --conditions development --test tests/*.test.mjs",
-    "render-build": "npm install --include=dev && npm run build"
+    "render-build": "npm ci --include=dev && npm run build"
   },
   "repository": {
     "type": "git",
@@ -55,7 +55,7 @@
   },
   "homepage": "https://github.com/jan-ninh/match3-backend#readme",
   "engines": {
-    "node": "22.x"
+    "node": ">=22.18.0 <23"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

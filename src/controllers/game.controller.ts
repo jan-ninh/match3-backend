@@ -26,7 +26,7 @@ const FINAL_STAGE = 12;
  * - OR request header: x-match3-allow-stage-skip: 1
  */
 function isStageSkipEnabled(_req: Request): boolean {
-  return env.NODE_ENV === 'development' && process.env.ALLOW_STAGE_SKIP === '1';
+  return env.allowStageSkip;
 }
 
 function isValidStageNumber(n: number): boolean {

@@ -4,7 +4,7 @@ import { refillHearts } from '#services';
 
 export function startHeartRefillScheduler() {
   // هر 30 دقیقه یکبار بررسی کن
-  schedule.scheduleJob('*/30 * * * *', async () => {
+  return schedule.scheduleJob('*/30 * * * *', async () => {
     try {
       console.log('[heartRefill] Starting scheduled heart refill check...');
       const users = await User.find({ hearts: { $lt: 3 } });
@@ -23,8 +23,8 @@ export function startHeartRefillScheduler() {
       }
 
       console.log(`[heartRefill] Updated ${updatedCount} users with refilled hearts`);
-    } catch (err) {
-      console.error('[heartRefill] Scheduler error:', err);
+    } catch {
+      console.error('[heartRefill] Scheduler unavailable');
     }
   });
 }

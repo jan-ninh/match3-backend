@@ -218,6 +218,7 @@ test('production config requires secrets/origins/database and enforces secure co
     MONGO_URI: 'mongodb://127.0.0.1:27017',
     DB_NAME: 'auth_test',
     CLIENT_BASE_URL: 'https://frontend.example',
+    COOKIE_SAME_SITE: 'none', TRUST_PROXY_HOPS: '1',
     ACCESS_JWT_SECRET: randomBytes(48).toString('hex'),
   };
   const c = loadConfig(production);

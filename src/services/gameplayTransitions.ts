@@ -102,7 +102,7 @@ export async function executeGameplay(ownerId: string, input: Input) {
           const { stageNumber } = input.body;
           if (user.activeAttempt) throw new HttpError(409, 'An account attempt is already active; abandon it explicitly');
           if (user.activeStageRun) throw new HttpError(409, 'An interrupted legacy stage must be abandoned explicitly');
-          const devSkip = env.NODE_ENV === 'development' && process.env.ALLOW_STAGE_SKIP === '1';
+          const devSkip = env.allowStageSkip;
           if (!devSkip && stageNumber !== frontier(user.progress)) throw new HttpError(403, 'Stage is not currently playable');
           // Development may select a stage, but never fabricates predecessor completion.
           user.gameplayRunId ||= randomUUID();
