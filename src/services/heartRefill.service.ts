@@ -14,10 +14,11 @@ export function startHeartRefillScheduler() {
         const { hearts: newHearts, lastRefillAt: newLastRefillAt } = refillHearts(user.hearts, user.lastHeartRefillAt || new Date(), 3);
 
         if (newHearts !== user.hearts) {
-          user.hearts = newHearts;
-          user.lastHeartRefillAt = newLastRefillAt;
-          await user.save();
-          updatedCount++;
+          const changed = await User.updateOne(
+            { _id: user._id, hearts: user.hearts, lastHeartRefillAt: user.lastHeartRefillAt ?? null },
+            { $set: { hearts: newHearts, lastHeartRefillAt: newLastRefillAt }, $inc: { gameplayRevision: 1 } },
+          );
+          updatedCount += changed.modifiedCount;
         }
       }
 

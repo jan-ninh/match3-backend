@@ -1,15 +1,7 @@
-import { authenticate } from '../middlewares/auth.middleware.ts';
-// src/routes/campaign.routes.ts
 import { Router } from 'express';
-import { startCampaign, levelEnd, levelAbort } from '#controllers';
-import { validateBodyZod } from '#middlewares';
-import { campaignStartBodySchema, campaignLevelEndBodySchema, campaignLevelAbortBodySchema } from '#schemas';
-
+import { authenticate } from '../middlewares/auth.middleware.ts';
 const router = Router();
 router.use(authenticate);
-
-router.post('/start', validateBodyZod(campaignStartBodySchema), startCampaign);
-router.post('/levelEnd', validateBodyZod(campaignLevelEndBodySchema), levelEnd);
-router.post('/levelAbort', validateBodyZod(campaignLevelAbortBodySchema), levelAbort);
-
+// Legacy ranking telemetry is paused, not a second source of account gameplay authority.
+router.post(['/start', '/levelEnd', '/levelAbort'], (_req, res) => res.status(410).json({ error: 'Campaign telemetry is paused pending consolidation' }));
 export default router;

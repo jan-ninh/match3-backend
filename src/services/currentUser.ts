@@ -1,8 +1,17 @@
+import { frontier, RULES_VERSION, CAMPAIGN_VERSION } from './gameplayRules.ts';
 import type { HydratedDocument } from 'mongoose';
 import type { IUser } from '../models/User.model.ts';
 export function currentUser(user: HydratedDocument<IUser>) {
   return {
     id: String(user._id),
+    revision: user.gameplayRevision ?? 0,
+    rulesVersion: RULES_VERSION,
+    campaignVersion: CAMPAIGN_VERSION,
+    runId: user.gameplayRunId ?? null,
+    frontier: frontier(user.progress),
+    activeAttempt: user.activeAttempt ?? null,
+    pendingRewards: user.pendingRewards ?? [],
+    legacyInterrupted: !!user.activeStageRun && !user.activeAttempt,
     email: user.email,
     username: user.username,
     avatar: user.avatar,

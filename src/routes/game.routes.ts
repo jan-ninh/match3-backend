@@ -1,36 +1,35 @@
 import { Router } from 'express';
-import { startStage, completeStage, loseGame, abandonGame, getStatus } from '#controllers';
-import { validateBodyZod, validateParamsZod } from '#middlewares';
-import { completeStageBodySchema } from '#schemas';
-import { z } from 'zod';
 import { authenticate, matchAccountParam } from '../middlewares/auth.middleware.ts';
+import { validateBodyZod, validateParamsZod } from '#middlewares';
+import { startCommand, terminalCommand, rewardCommand, legacyAbandonCommand, idParam } from '../schemas/gameplay.schemas.ts';
+import {
+  startAttempt,
+  finishAttempt,
+  claimReward,
+  abandonLegacy,
+  getGameplaySnapshot,
+  getOperation,
+  getAttempt,
+  deprecatedGameplay,
+} from '../controllers/gameplay.controller.ts';
 const router = Router();
-const stage = z.object({ stageNumber: z.coerce.number().int().min(1).max(12) });
-const startBody = z.object({
-  stageSelectedBoosters: z
-    .object({
-      bomb: z.number().int().nonnegative().optional(),
-      laser: z.number().int().nonnegative().optional(),
-      extraShuffle: z.number().int().nonnegative().optional(),
-    })
-    .optional(),
-});
 router.use(authenticate);
-router.post('/start/:stageNumber', validateParamsZod(stage), validateBodyZod(startBody), startStage);
-router.post('/completeStage/:stageNumber', validateParamsZod(stage), validateBodyZod(completeStageBodySchema), completeStage);
-router.post('/lose', loseGame);
-router.post('/abandon', abandonGame);
-router.get('/status', getStatus);
-// Historical clients may retain IDs; IDs cannot select an owner.
-router.post('/start/:id/:stageNumber', matchAccountParam, validateParamsZod(stage), validateBodyZod(startBody), startStage);
-router.post(
-  '/completeStage/:id/:stageNumber',
-  matchAccountParam,
-  validateParamsZod(stage),
-  validateBodyZod(completeStageBodySchema),
-  completeStage,
-);
-router.post('/lose/:id', matchAccountParam, loseGame);
-router.post('/abandon/:id', matchAccountParam, abandonGame);
-router.get('/:id/status', matchAccountParam, getStatus);
+router.get('/snapshot', getGameplaySnapshot);
+router.get('/status', getGameplaySnapshot);
+router.post('/attempts/start', validateBodyZod(startCommand), startAttempt);
+router.post('/attempts/terminal', validateBodyZod(terminalCommand), finishAttempt);
+router.post('/rewards/claim', validateBodyZod(rewardCommand), claimReward);
+router.post('/legacy-abandon', validateBodyZod(legacyAbandonCommand), abandonLegacy);
+router.get('/operations/:id', validateParamsZod(idParam), getOperation);
+router.get('/attempts/:id', validateParamsZod(idParam), getAttempt);
+// Preserve historical paths as explicit deprecations; none can bypass the transition service.
+router.post('/start/:stageNumber', deprecatedGameplay);
+router.post('/completeStage/:stageNumber', deprecatedGameplay);
+router.post('/lose', deprecatedGameplay);
+router.post('/abandon', deprecatedGameplay);
+router.post('/start/:id/:stageNumber', matchAccountParam, deprecatedGameplay);
+router.post('/completeStage/:id/:stageNumber', matchAccountParam, deprecatedGameplay);
+router.post('/lose/:id', matchAccountParam, deprecatedGameplay);
+router.post('/abandon/:id', matchAccountParam, deprecatedGameplay);
+router.get('/:id/status', matchAccountParam, getGameplaySnapshot);
 export default router;

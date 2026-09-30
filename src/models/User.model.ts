@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export type PowerKey = 'bomb' | 'laser' | 'extraShuffle';
 
-interface Powers {
+export interface Powers {
   bomb: number;
   laser: number;
   extraShuffle: number;
@@ -27,7 +27,26 @@ interface ActiveStageRun {
   stageSelectedBoosters: Powers;
 }
 
+export interface AccountActiveAttempt {
+  attemptId: string;
+  runId: string;
+  stageNumber: number;
+  scenarioVersion: string;
+  startedAt: Date;
+  startedRevision: number;
+  startOperationId: string;
+  initialPowers: Powers;
+}
+export interface PendingReward {
+  attemptId: string;
+  runId: string;
+  quantity: number;
+}
 export interface IUser {
+  gameplayRevision: number;
+  gameplayRunId?: string;
+  activeAttempt?: AccountActiveAttempt;
+  pendingRewards: PendingReward[];
   email: string;
   username: string;
   password: string;
@@ -90,8 +109,33 @@ const badgeProgressSchema = new Schema<BadgeProgress>(
   { _id: false },
 );
 
+const accountAttemptSchema = new Schema<AccountActiveAttempt>(
+  {
+    attemptId: { type: String, required: true },
+    runId: { type: String, required: true },
+    stageNumber: { type: Number, required: true },
+    scenarioVersion: { type: String, required: true },
+    startedAt: { type: Date, required: true },
+    startedRevision: { type: Number, required: true },
+    startOperationId: { type: String, required: true },
+    initialPowers: { type: powersSchema, required: true },
+  },
+  { _id: false },
+);
+const pendingRewardSchema = new Schema<PendingReward>(
+  {
+    attemptId: { type: String, required: true },
+    runId: { type: String, required: true },
+    quantity: { type: Number, required: true },
+  },
+  { _id: false },
+);
 const userSchema = new Schema<IUser>(
   {
+    gameplayRevision: { type: Number, default: 0, min: 0 },
+    gameplayRunId: { type: String },
+    activeAttempt: { type: accountAttemptSchema },
+    pendingRewards: { type: [pendingRewardSchema], default: [] },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, match: [/^\S+@\S+\.\S+$/, 'Email is not valid'] },
     username: { type: String, required: true, unique: true, trim: true },
     password: { type: String, required: true, select: false },

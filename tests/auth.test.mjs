@@ -124,14 +124,8 @@ test('profile/avatar/powers/game/rank compatibility IDs cannot select another ac
     ['/api/leaderboard/rank/', 'GET'],
   ])
     assert.equal((await call(path + bob.data.user.id, { method, body, token: alice.data.accessToken })).status, 403);
-  assert.equal(
-    (await call('/api/game/start/' + bob.data.user.id + '/1', { method: 'POST', body: {}, token: alice.data.accessToken })).status,
-    403,
-  );
-  assert.equal(
-    (await call('/api/game/completeStage/' + bob.data.user.id + '/1', { method: 'POST', body: {}, token: alice.data.accessToken })).status,
-    403,
-  );
+  assert.equal((await call('/api/game/start/' + bob.data.user.id + '/1', { method: 'POST', body: {}, token: alice.data.accessToken })).status, 403);
+  assert.equal((await call('/api/game/completeStage/' + bob.data.user.id + '/1', { method: 'POST', body: {}, token: alice.data.accessToken })).status, 403);
   assert.equal((await call('/api/game/' + bob.data.user.id + '/status', { token: alice.data.accessToken })).status, 403);
   assert.equal(
     (
@@ -153,35 +147,20 @@ test('profile/avatar/powers/game/rank compatibility IDs cannot select another ac
         token: alice.data.accessToken,
       })
     ).status,
-    200,
+    410,
   );
   assert.equal((await User.findById(bob.data.user.id)).powers.bomb, 0);
-  assert.equal((await call('/api/game/start/1', { method: 'POST', body: {}, token: alice.data.accessToken })).status, 200);
+  assert.equal((await call('/api/game/start/1', { method: 'POST', body: {}, token: alice.data.accessToken })).status, 410);
   assert.equal((await User.findById(bob.data.user.id)).activeStageRun, undefined);
   for (const path of ['/api/user/profile/' + alice.data.user.id, '/api/game/status', '/api/campaign/start'])
-    assert.equal(
-      (await call(path, { method: path.includes('/campaign/') ? 'POST' : 'GET', body: path.includes('/campaign/') ? {} : undefined }))
-        .status,
-      401,
-    );
+    assert.equal((await call(path, { method: path.includes('/campaign/') ? 'POST' : 'GET', body: path.includes('/campaign/') ? {} : undefined })).status, 401);
 });
-test('campaign identity and terminal operations are scoped to authenticated owner', async () => {
-  const started = await call('/api/campaign/start', {
-    method: 'POST',
-    body: { ACCOUNT_ID: bob.data.user.id },
-    token: alice.data.accessToken,
-  });
-  assert.equal(started.status, 403);
-  const run = await call('/api/campaign/start', { method: 'POST', body: {}, token: alice.data.accessToken });
-  assert.equal(run.status, 200);
-  assert.equal((await CampaignRun.findOne({ campaignId: run.data.CAMPAIGN_ID })).accountId, alice.data.user.id);
-  const body = { CAMPAIGN_ID: run.data.CAMPAIGN_ID, LEVEL_INDEX: 1, ATTEMPT_ID: crypto.randomUUID(), OUTCOME: 'WIN', MOVES_USED_RAW: 1 };
-  assert.equal((await call('/api/campaign/levelEnd', { method: 'POST', body, token: bob.data.accessToken })).status, 404);
-  assert.equal(
-    (await call('/api/campaign/levelAbort', { method: 'POST', body: { ...body, ABORT_REASON: 'quit' }, token: bob.data.accessToken }))
-      .status,
-    404,
-  );
+test('deprecated campaign telemetry cannot mutate account or ranking state and still requires verified identity', async () => {
+  for (const path of ['/api/campaign/start', '/api/campaign/levelEnd', '/api/campaign/levelAbort']) {
+    assert.equal((await call(path, { method: 'POST', body: { ACCOUNT_ID: bob.data.user.id }, token: alice.data.accessToken })).status, 410);
+    assert.equal((await call(path, { method: 'POST', body: {} })).status, 401);
+  }
+  assert.equal(await CampaignRun.countDocuments(), 0);
 });
 test('refresh rotates atomically, old token reuse revokes family and existing access tokens', async () => {
   const first = await register('Rotate');
@@ -249,4 +228,17 @@ test('production config requires secrets/origins/database and enforces secure co
   assert.throws(() => loadConfig({ ...production, CLIENT_BASE_URL: '*' }));
   assert.throws(() => loadConfig({ ...production, COOKIE_SECURE: 'false' }));
   assert.throws(() => loadConfig({ ...production, ACCESS_JWT_SECRET: 'bad' }));
+});
+
+test('standalone MongoDB rejects gameplay transactions without partially committing account state', async () => {
+  const result = await call('/api/game/attempts/start', {
+    token: alice.data.accessToken,
+    method: 'POST',
+    body: { operationId: crypto.randomUUID(), expectedRevision: 0, stageNumber: 1 },
+  });
+  assert.equal(result.status, 503);
+  assert.equal((await User.findById(alice.data.user.id)).activeAttempt, undefined);
+  const { StageAttempt, OperationReceipt } = await import('../src/models/Gameplay.model.ts');
+  assert.equal(await StageAttempt.countDocuments(), 0);
+  assert.equal(await OperationReceipt.countDocuments(), 0);
 });
