@@ -1,34 +1,17 @@
-// src/routes/user.routes.ts
+import { deprecatedGameplay } from '../controllers/gameplay.controller.ts';
 import { Router } from 'express';
-import { getProfile, getMyProfile, updateAvatar, updatePowers } from '#controllers';
+import { getProfile, updateAvatar } from '#controllers';
 import { z } from 'zod';
-import { authenticateToken, validateBodyZod, validateParamsZod } from '#middlewares';
-
+import { validateBodyZod } from '#middlewares';
+import { authenticate, matchAccountParam } from '../middlewares/auth.middleware.ts';
 const router = Router();
-
 const avatarSchema = z.object({
   avatar: z.enum(['default.png', 'avatar1.png', 'avatar2.png', 'avatar3.png', 'avatar4.png', 'avatar5.png', 'avatar6.png']),
 });
-
-const idParam = z.object({ id: z.string() });
-
-const powersSchema = z.object({
-  powers: z.object({
-    bomb: z.number().int().nonnegative().optional(),
-    laser: z.number().int().nonnegative().optional(),
-    extraShuffle: z.number().int().nonnegative().optional(),
-  }),
-  operation: z.enum(['set', 'add']).optional(),
-});
-
-// Secure endpoint - returns current authenticated user's profile
-router.get('/me', authenticateToken, getMyProfile);
-router.get('/profile/me', authenticateToken, getMyProfile);
-
-// Legacy endpoint - returns any user's profile (may have IDOR vulnerability)
-router.get('/profile/:id', authenticateToken, validateParamsZod(idParam), getProfile);
-router.patch('/avatar/:id', validateParamsZod(idParam), validateBodyZod(avatarSchema), updateAvatar);
-
-// 2) /api/user/powers/:id
-router.patch('/powers/:id', validateParamsZod(idParam), validateBodyZod(powersSchema), updatePowers);
+router.use(authenticate);
+router.get('/profile/:id', matchAccountParam, getProfile);
+router.patch('/avatar', validateBodyZod(avatarSchema), updateAvatar);
+router.patch('/powers', deprecatedGameplay);
+router.patch('/avatar/:id', matchAccountParam, validateBodyZod(avatarSchema), updateAvatar);
+router.patch('/powers/:id', matchAccountParam, deprecatedGameplay);
 export default router;

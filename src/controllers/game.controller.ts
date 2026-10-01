@@ -1,14 +1,58 @@
+import { accountId } from '../middlewares/auth.middleware.ts';
+import { env } from '../utils/env.ts';
 // src/controllers/game.controller.ts
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler } from 'express';
 import { User, LeaderboardEntry, type PowerKey } from '#models';
 import { refillHearts } from '#services';
 
 const BASE_POINTS = 800;
 const REPLAY_POINTS = 400;
-const LOSS_SCORE_PENALTY = 400;
-const RUN_START_POWERS = { bomb: 1, laser: 1, extraShuffle: 2 } as const; // 1,1,2
+
+// Meta progression (farmable across runs)
+const EXP_PER_WIN = 1000;
+const EXP_PER_LEVEL = 3000;
+
+// const RUN_START_POWERS = { bomb: 1, laser: 1, extraShuffle: 2 } as const; // 1,1,2
+const RUN_START_POWERS = { bomb: 120, laser: 120, extraShuffle: 120 } as const; // 1,1,2
 const STAGE1_RESET_PROGRESS = { completed: false, points: 0 } as const;
 const FINAL_STAGE = 12;
+/**
+ * DEMO / presentation helper:
+ * - When enabled, backend will allow starting/completing arbitrary stages (no frontier gate),
+ *   and will backfill earlier stages as completed (0 points) so the map unlocks naturally.
+ *
+ * Enable via:
+ * - env: ALLOW_STAGE_SKIP=1
+ * - OR request header: x-match3-allow-stage-skip: 1
+ */
+function isStageSkipEnabled(_req: Request): boolean {
+  return env.allowStageSkip;
+}
+
+function isValidStageNumber(n: number): boolean {
+  return Number.isFinite(n) && n >= 1 && n <= FINAL_STAGE;
+}
+
+function backfillProgressForSkippedStages(progress: Map<string, unknown>, stageNum: number) {
+  // Mark earlier stages as completed (0 points) so:
+  // - allowedStage becomes (highestCompleted + 1)
+  // - the map can render a sensible unlocked run
+  for (let n = 1; n < stageNum; n++) {
+    const key = `stage${n}`;
+    const cur = progress.get(key);
+
+    if (cur && typeof cur === 'object') {
+      const r = cur as { completed?: unknown; points?: unknown };
+      if (r.completed === true) continue;
+
+      const points = typeof r.points === 'number' && Number.isFinite(r.points) ? r.points | 0 : 0;
+      progress.set(key, { completed: true, points });
+      continue;
+    }
+
+    progress.set(key, { completed: true, points: 0 });
+  }
+}
 
 function parseStageNumberFromKey(key: string): number | null {
   if (!key.startsWith('stage')) return null;
@@ -31,21 +75,57 @@ function getAllowedStageFromProgress(progress: Map<string, { completed: boolean 
   return highestCompleted + 1;
 }
 
+function clampInt(n: unknown, min: number, max: number): number {
+  const v = typeof n === 'number' ? n : Number(n);
+  if (!Number.isFinite(v)) return min;
+  const i = Math.floor(v);
+  return Math.max(min, Math.min(max, i));
+}
+
+function awardWinExp(user: { playerLevel?: unknown; playerExp?: unknown }, expGain: number) {
+  const gain = clampInt(expGain, 0, 1_000_000_000);
+
+  const lvl0 = clampInt(user.playerLevel ?? 1, 1, 1_000_000_000);
+  const exp0 = clampInt(user.playerExp ?? 0, 0, 1_000_000_000);
+
+  const total = exp0 + gain;
+
+  const levelsUp = Math.floor(total / EXP_PER_LEVEL);
+  const nextLevel = lvl0 + levelsUp;
+  const nextExp = total % EXP_PER_LEVEL;
+
+  (user as any).playerLevel = nextLevel;
+  (user as any).playerExp = nextExp;
+}
+
 function resetRunStateToStage1(user: {
   powers: { bomb: number; laser: number; extraShuffle: number };
   progress: Map<string, { completed: boolean; points: number; lastCompletedAt?: Date; usedPower?: PowerKey }>;
+  totalScore: number;
   activeStageRun?: unknown;
+
+  // meta progression must survive
+  playerLevel?: unknown;
+  playerExp?: unknown;
 }) {
   user.powers = { ...RUN_START_POWERS };
   user.progress.clear();
   user.progress.set('stage1', { ...STAGE1_RESET_PROGRESS });
+  user.totalScore = 0;
   user.activeStageRun = undefined;
+
+  // IMPORTANT: do NOT reset playerLevel/playerExp here (roguelite reset keeps meta progression)
 }
 
 export const startStage: RequestHandler = async (req, res, next) => {
   try {
-    const { id, stageNumber } = req.params as unknown as { id: string; stageNumber: string };
+    const id = accountId(req);
+    const stageNumber = String(req.params.stageNumber);
     const stageNum = parseInt(stageNumber, 10);
+    if (!isValidStageNumber(stageNum)) {
+      return res.status(400).json({ error: 'Invalid stageNumber' });
+    }
+    const demoSkip = isStageSkipEnabled(req);
     const { stageSelectedBoosters } = req.body as { stageSelectedBoosters?: Record<PowerKey, number> };
 
     const stageId = `stage${stageNum}`;
@@ -56,14 +136,14 @@ export const startStage: RequestHandler = async (req, res, next) => {
     // Only the user's current frontier stage can be played.
     // Disallow both previous stages and not-yet-unlocked future stages.
     const allowedStage = getAllowedStageFromProgress(user.progress);
-    if (stageNum !== allowedStage) {
+    if (!demoSkip && stageNum !== allowedStage) {
       return res.status(403).json({
         error: 'Stage is not currently playable',
         allowedStage,
       });
     }
 
-    if (stageNum > 1) {
+    if (!demoSkip && stageNum > 1) {
       const prevStageKey = `stage${stageNum - 1}`;
       const prevProgress = user.progress.get(prevStageKey);
       if (!prevProgress?.completed) {
@@ -132,8 +212,13 @@ export const startStage: RequestHandler = async (req, res, next) => {
 
 export const completeStage: RequestHandler = async (req, res, next) => {
   try {
-    const { id, stageNumber } = req.params as unknown as { id: string; stageNumber: string };
+    const id = accountId(req);
+    const stageNumber = String(req.params.stageNumber);
     const stageNum = parseInt(stageNumber, 10);
+    if (!isValidStageNumber(stageNum)) {
+      return res.status(400).json({ error: 'Invalid stageNumber' });
+    }
+    const demoSkip = isStageSkipEnabled(req);
     const { usedPower } = req.body as { usedPower?: PowerKey };
 
     const stageKey = `stage${stageNum}`;
@@ -141,7 +226,11 @@ export const completeStage: RequestHandler = async (req, res, next) => {
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    if (stageNum > 1) {
+    if (demoSkip && stageNum > 1) {
+      backfillProgressForSkippedStages(user.progress as unknown as Map<string, unknown>, stageNum);
+    }
+
+    if (!demoSkip && stageNum > 1) {
       const prevStageKey = `stage${stageNum - 1}`;
       const prevProgress = user.progress.get(prevStageKey);
       if (!prevProgress?.completed) {
@@ -179,6 +268,9 @@ export const completeStage: RequestHandler = async (req, res, next) => {
 
     user.totalScore += points;
 
+    // Meta progression: every WIN grants EXP, including replays (farming allowed).
+    awardWinExp(user as any, EXP_PER_WIN);
+
     checkAndAwardBadges(user);
 
     user.gamesPlayed++;
@@ -204,6 +296,13 @@ export const completeStage: RequestHandler = async (req, res, next) => {
       points,
       totalScore: user.totalScore,
       powers: user.powers,
+
+      // Meta progression
+      playerLevel: (user as any).playerLevel ?? 1,
+      playerExp: (user as any).playerExp ?? 0,
+      expPerLevel: EXP_PER_LEVEL,
+      expGain: EXP_PER_WIN,
+
       newBadges: user.badges.filter((b) => b.achievedAt > new Date(Date.now() - 1000)),
       showPowerSelection,
       nextStage: !isFinalStageResponse ? `stage${stageNum + 1}` : null,
@@ -246,7 +345,7 @@ function checkAndAwardBadges(user: any) {
 
 export const loseGame: RequestHandler = async (req, res, next) => {
   try {
-    const { id } = req.params as { id: string };
+    const id = accountId(req);
 
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -260,10 +359,8 @@ export const loseGame: RequestHandler = async (req, res, next) => {
     }
 
     // Roguelite reset: keep only stage1 (reset), remove every other stage record.
-    resetRunStateToStage1(user);
-
-    // Loss penalty: subtract 400, but never go below zero.
-    user.totalScore = Math.max(0, user.totalScore - LOSS_SCORE_PENALTY);
+    // IMPORTANT: meta progression (playerLevel/playerExp) stays.
+    resetRunStateToStage1(user as any);
 
     user.gamesPlayed += 1;
     user.gamesLost += 1;
@@ -277,7 +374,7 @@ export const loseGame: RequestHandler = async (req, res, next) => {
     );
 
     res.json({
-      message: 'Game lost - Roguelite reset: progress and powers reset to start new run from stage 1 (totalScore is preserved)',
+      message: 'Game lost - Roguelite reset: all progress, powers, and score reset to start new run from stage 1',
       hearts: user.hearts,
       powers: user.powers,
       totalScore: user.totalScore,
@@ -285,6 +382,11 @@ export const loseGame: RequestHandler = async (req, res, next) => {
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,
       restartFrom: 'stage1',
+
+      // Meta progression persists
+      playerLevel: (user as any).playerLevel ?? 1,
+      playerExp: (user as any).playerExp ?? 0,
+      expPerLevel: EXP_PER_LEVEL,
     });
   } catch (err) {
     next(err);
@@ -293,8 +395,7 @@ export const loseGame: RequestHandler = async (req, res, next) => {
 
 export const abandonGame: RequestHandler = async (req, res, next) => {
   try {
-    const { id } = req.params as { id: string };
-    const { usedPower } = req.body as { usedPower?: PowerKey };
+    const id = accountId(req);
 
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -308,7 +409,8 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
     }
 
     // Roguelite reset: keep only stage1 (reset), remove every other stage record.
-    resetRunStateToStage1(user);
+    // IMPORTANT: meta progression (playerLevel/playerExp) stays.
+    resetRunStateToStage1(user as any);
 
     user.gamesPlayed += 1;
     user.gamesLost += 1;
@@ -322,7 +424,7 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
     );
 
     res.json({
-      message: 'Game abandoned - Roguelite reset: progress and powers reset to start new run from stage 1 (totalScore is preserved)',
+      message: 'Game abandoned - Roguelite reset: all progress, powers, and score reset to start new run from stage 1',
       hearts: user.hearts,
       powers: user.powers,
       totalScore: user.totalScore,
@@ -330,6 +432,11 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
       gamesWon: user.gamesWon,
       gamesLost: user.gamesLost,
       restartFrom: 'stage1',
+
+      // Meta progression persists
+      playerLevel: (user as any).playerLevel ?? 1,
+      playerExp: (user as any).playerExp ?? 0,
+      expPerLevel: EXP_PER_LEVEL,
     });
   } catch (err) {
     next(err);
@@ -338,13 +445,17 @@ export const abandonGame: RequestHandler = async (req, res, next) => {
 
 export const getStatus: RequestHandler = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const id = accountId(req);
     const user = await User.findById(id);
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const maxHearts = 3;
-    const { hearts: currentHearts, lastRefillAt: newLastRefillAt } = refillHearts(user.hearts, user.lastHeartRefillAt || new Date(), maxHearts);
+    const { hearts: currentHearts, lastRefillAt: newLastRefillAt } = refillHearts(
+      user.hearts,
+      user.lastHeartRefillAt || new Date(),
+      maxHearts,
+    );
 
     // Update user if hearts were refilled
     if (currentHearts !== user.hearts) {
@@ -368,6 +479,11 @@ export const getStatus: RequestHandler = async (req, res, next) => {
       powers: user.powers,
       allowedStage,
       nextRefillAt,
+
+      // Meta progression (for UI convenience)
+      playerLevel: (user as any).playerLevel ?? 1,
+      playerExp: (user as any).playerExp ?? 0,
+      expPerLevel: EXP_PER_LEVEL,
     });
   } catch (err) {
     next(err);

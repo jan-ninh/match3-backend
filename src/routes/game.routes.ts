@@ -1,15 +1,37 @@
-// src/routes/game.routes.ts
 import { Router } from 'express';
-import { startStage, completeStage, loseGame, abandonGame, getStatus } from '#controllers';
+import { authenticate, matchAccountParam } from '../middlewares/auth.middleware.ts';
 import { validateBodyZod, validateParamsZod } from '#middlewares';
-import { completeStageBodySchema, completeStageParamsSchema, gameEndParamsSchema } from '#schemas';
-
+import { startCommand, terminalCommand, rewardCommand, legacyAbandonCommand, idParam } from '../schemas/gameplay.schemas.ts';
+import {
+  newCampaign,
+  startAttempt,
+  finishAttempt,
+  claimReward,
+  abandonLegacy,
+  getGameplaySnapshot,
+  getOperation,
+  getAttempt,
+  deprecatedGameplay,
+} from '../controllers/gameplay.controller.ts';
 const router = Router();
-
-router.post('/start/:id/:stageNumber', validateParamsZod(completeStageParamsSchema), startStage);
-router.post('/completeStage/:id/:stageNumber', validateParamsZod(completeStageParamsSchema), validateBodyZod(completeStageBodySchema), completeStage);
-router.post('/lose/:id', validateParamsZod(gameEndParamsSchema), loseGame);
-router.post('/abandon/:id', validateParamsZod(gameEndParamsSchema), abandonGame);
-// In your routes file (e.g., user.routes.ts)
-router.get('/:id/status', validateParamsZod(gameEndParamsSchema), getStatus);
+router.use(authenticate);
+router.get('/snapshot', getGameplaySnapshot);
+router.get('/status', getGameplaySnapshot);
+router.post('/attempts/start', validateBodyZod(startCommand), startAttempt);
+router.post('/attempts/terminal', validateBodyZod(terminalCommand), finishAttempt);
+router.post('/rewards/claim', validateBodyZod(rewardCommand), claimReward);
+router.post('/new-run', validateBodyZod(legacyAbandonCommand), newCampaign);
+router.post('/legacy-abandon', validateBodyZod(legacyAbandonCommand), abandonLegacy);
+router.get('/operations/:id', validateParamsZod(idParam), getOperation);
+router.get('/attempts/:id', validateParamsZod(idParam), getAttempt);
+// Preserve historical paths as explicit deprecations; none can bypass the transition service.
+router.post('/start/:stageNumber', deprecatedGameplay);
+router.post('/completeStage/:stageNumber', deprecatedGameplay);
+router.post('/lose', deprecatedGameplay);
+router.post('/abandon', deprecatedGameplay);
+router.post('/start/:id/:stageNumber', matchAccountParam, deprecatedGameplay);
+router.post('/completeStage/:id/:stageNumber', matchAccountParam, deprecatedGameplay);
+router.post('/lose/:id', matchAccountParam, deprecatedGameplay);
+router.post('/abandon/:id', matchAccountParam, deprecatedGameplay);
+router.get('/:id/status', matchAccountParam, getGameplaySnapshot);
 export default router;

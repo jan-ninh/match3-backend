@@ -1,106 +1,63 @@
-import type { RequestHandler, Response } from 'express';
-import { User, RefreshToken } from '#models';
-import { hashPassword, comparePassword, createAccessToken, createRefreshToken } from '#utils';
-import { REFRESH_TOKEN_TTL } from '#config';
-
-function setAuthCookie(res: Response, accessToken: string, refreshToken: string) {
-  const isProd = process.env.NODE_ENV === 'production';
-
-  const sameSite: 'none' | 'lax' = isProd ? 'none' : 'lax';
-  const cookieOptions = {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: sameSite,
-    path: '/',
-  };
-
-  res.cookie('accessToken', accessToken, {
-    ...cookieOptions,
-    maxAge: 15 * 60 * 1000,
-  });
-
-  res.cookie('refreshToken', refreshToken, {
-    ...cookieOptions,
-    maxAge: REFRESH_TOKEN_TTL * 1000,
-  });
-}
-
+import type { RequestHandler } from 'express';
+import { User } from '#models';
+import { hashPassword, comparePassword } from '#utils';
+import { currentUser } from '../services/currentUser.ts';
+import { createSession, rotateSession, revokeRefresh, refreshCookie, clearRefreshCookie } from '../services/session.service.ts';
+import { accountId } from '../middlewares/auth.middleware.ts';
+import { RefreshSession } from '../models/RefreshSession.model.ts';
+import { HttpError } from '../utils/httpError.ts';
 export const register: RequestHandler = async (req, res, next) => {
   try {
     const { email, username, password } = req.body as { email: string; username: string; password: string };
-
-    const exists = await User.findOne({ $or: [{ email }, { username }] });
-    if (exists) return res.status(409).json({ error: 'Email or username already used' });
-
-    const hashed = await hashPassword(password);
-    const user = new User({ email, username, password: hashed });
-    await user.save();
-
-    const accessToken = await createAccessToken({ id: user._id });
-    const refreshToken = await createRefreshToken(user._id);
-
-    setAuthCookie(res, accessToken, refreshToken);
-
-    res.status(201).json({
-      id: user._id,
-      email: user.email,
-      username: user.username,
-      avatar: user.avatar,
-    });
-  } catch (err) {
-    next(err);
+    if (await User.exists({ $or: [{ email }, { username }] })) throw new HttpError(409, 'Email or username already used');
+    const user = await User.create({ email, username, password: await hashPassword(password) });
+    const accessToken = await createSession(String(user._id), req, res);
+    res.status(201).json({ accessToken, user: currentUser(user) });
+  } catch (error) {
+    next(error);
   }
 };
-
 export const login: RequestHandler = async (req, res, next) => {
   try {
     const { email, password } = req.body as { email: string; password: string };
-
     const user = await User.findOne({ email }).select('+password');
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-
-    const ok = await comparePassword(password, user.password);
-    if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
-
-    const accessToken = await createAccessToken({ id: user._id });
-    const refreshToken = await createRefreshToken(user._id);
-
-    setAuthCookie(res, accessToken, refreshToken);
-
-    res.json({
-      id: user._id,
-      email: user.email,
-      username: user.username,
-      avatar: user.avatar,
-      totalScore: user.totalScore,
-      hearts: user.hearts,
-    });
-  } catch (err) {
-    next(err);
+    if (!user || !(await comparePassword(password, user.password))) throw new HttpError(401, 'Invalid credentials');
+    const accessToken = await createSession(String(user._id), req, res);
+    res.json({ accessToken, user: currentUser(user) });
+  } catch (error) {
+    next(error);
   }
 };
-
+export const refresh: RequestHandler = async (req, res, next) => {
+  try {
+    const session = await rotateSession(req, res);
+    const user = await User.findById(session.userId);
+    if (!user) {
+      await RefreshSession.updateOne({ _id: session.sessionId }, { $set: { revokedAt: new Date() } });
+      clearRefreshCookie(res);
+      throw new HttpError(401, 'Session expired');
+    }
+    res.json({ accessToken: session.accessToken, user: currentUser(user) });
+  } catch (error) {
+    next(error);
+  }
+};
 export const logout: RequestHandler = async (req, res, next) => {
   try {
-    const { refreshToken } = req.cookies;
-
-    if (refreshToken) {
-      await RefreshToken.findOneAndDelete({ token: refreshToken });
-    }
-
-    const isProd = process.env.NODE_ENV === 'production';
-
-    const clearOptions = {
-      path: '/',
-      sameSite: isProd ? ('none' as const) : ('lax' as const),
-      secure: isProd,
-    };
-
-    res.clearCookie('accessToken', clearOptions);
-    res.clearCookie('refreshToken', clearOptions);
-
-    res.json({ message: 'Logged out successfully' });
-  } catch (err) {
-    next(err);
+    await revokeRefresh(refreshCookie(req));
+    clearRefreshCookie(res);
+    res.status(204).end();
+  } catch (error) {
+    clearRefreshCookie(res);
+    next(error);
+  }
+};
+export const me: RequestHandler = async (req, res, next) => {
+  try {
+    const user = await User.findById(accountId(req));
+    if (!user) throw new HttpError(401, 'Session expired');
+    res.json(currentUser(user));
+  } catch (error) {
+    next(error);
   }
 };

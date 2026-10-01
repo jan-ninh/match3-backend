@@ -1,3 +1,5 @@
+import { accountId } from '../middlewares/auth.middleware.ts';
+import { currentUser } from '../services/currentUser.ts';
 // src/controllers/user.controller.ts
 import type { RequestHandler } from 'express';
 import { User } from '#models';
@@ -5,73 +7,20 @@ import mongoose from 'mongoose';
 
 export const getProfile: RequestHandler = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const id = accountId(req);
     const user = await User.findById(id);
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const progress = Object.fromEntries(user.progress);
-
-    res.json({
-      username: user.username,
-      avatar: user.avatar,
-      powers: user.powers,
-      totalScore: user.totalScore,
-      progress,
-      badges: user.badges,
-      gamesPlayed: user.gamesPlayed,
-      gamesWon: user.gamesWon,
-      gamesLost: user.gamesLost,
-    });
+    res.json(currentUser(user));
   } catch (err) {
-    next(err);
-  }
-};
-
-/**
- * Get current authenticated user's profile
- * Secure endpoint - uses JWT token to identify user (no IDOR vulnerability)
- */
-export const getMyProfile: RequestHandler = async (req, res, next) => {
-  try {
-    const userId = (req as any).userId;
-    
-    console.log(`[getMyProfile] userId from token:`, userId);
-
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized - no user ID in token' });
-    }
-
-    const user = await User.findById(userId);
-    console.log(`[getMyProfile] found user:`, user ? 'yes' : 'no');
-
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    const progress = Object.fromEntries(user.progress);
-
-    res.json({
-      id: user._id,
-      username: user.username,
-      email: user.email,
-      avatar: user.avatar,
-      powers: user.powers,
-      totalScore: user.totalScore,
-      progress,
-      badges: user.badges,
-      gamesPlayed: user.gamesPlayed,
-      gamesWon: user.gamesWon,
-      gamesLost: user.gamesLost,
-      hearts: user.hearts,
-    });
-  } catch (err) {
-    console.error(`[getMyProfile] error:`, err);
     next(err);
   }
 };
 
 export const updateAvatar: RequestHandler = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const id = accountId(req);
     const { avatar } = req.body as { avatar: string };
 
     const validAvatars = ['default.png', 'avatar1.png', 'avatar2.png', 'avatar3.png', 'avatar4.png', 'avatar5.png', 'avatar6.png'];
@@ -94,7 +43,7 @@ export const updateAvatar: RequestHandler = async (req, res, next) => {
  */
 export const updatePowers: RequestHandler = async (req, res, next) => {
   try {
-    const { id } = req.params as { id: string };
+    const id = accountId(req);
     const { powers, operation } = req.body as {
       powers?: { bomb?: number; laser?: number; extraShuffle?: number };
       operation?: 'set' | 'add';
@@ -113,7 +62,8 @@ export const updatePowers: RequestHandler = async (req, res, next) => {
       if (op === 'add') {
         if (typeof powers.bomb === 'number') user.powers.bomb = Math.max(0, (user.powers.bomb || 0) + Math.floor(powers.bomb));
         if (typeof powers.laser === 'number') user.powers.laser = Math.max(0, (user.powers.laser || 0) + Math.floor(powers.laser));
-        if (typeof powers.extraShuffle === 'number') user.powers.extraShuffle = Math.max(0, (user.powers.extraShuffle || 0) + Math.floor(powers.extraShuffle));
+        if (typeof powers.extraShuffle === 'number')
+          user.powers.extraShuffle = Math.max(0, (user.powers.extraShuffle || 0) + Math.floor(powers.extraShuffle));
       } else {
         // set
         if (typeof powers.bomb === 'number') user.powers.bomb = Math.max(0, Math.floor(powers.bomb));

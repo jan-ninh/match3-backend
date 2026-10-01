@@ -1,6 +1,6 @@
 // src/controllers/campaign.controller.ts
 import type { RequestHandler } from 'express';
-import jwt from 'jsonwebtoken';
+import { accountId as authenticatedAccountId } from '../middlewares/auth.middleware.ts';
 import { CampaignAttempt, CampaignRun, AllTimeLeaderboardEntry, User, type ICampaignAttempt } from '#models';
 import { HttpError } from '../utils/httpError.ts';
 import {
@@ -68,37 +68,6 @@ function computeMetaTierFromUser(user: { powers?: { bomb?: number; laser?: numbe
   return Math.max(0, Math.min(META_TIER_MAX, Math.floor(metaPowerScore / TIER_SIZE)));
 }
 
-function resolveAccountId(reqBody: unknown, authHeader: string | undefined): string | null {
-  // 1) Explicit (dev) body override
-  if (typeof reqBody === 'object' && reqBody !== null && 'ACCOUNT_ID' in reqBody) {
-    const v = (reqBody as { ACCOUNT_ID?: unknown }).ACCOUNT_ID;
-    if (typeof v === 'string' && v.trim().length > 0) return v.trim();
-  }
-
-  // 2) x-account-id header (dev)
-  // NOTE: express lower-cases header names.
-  // eslint is not configured in this backend scaffold; keep it simple.
-  //
-  // (We intentionally do not rely on req.header(...) here to avoid leaking req into helper signature.)
-
-  // 3) Authorization: Bearer <jwt> (decode only; verification is out-of-scope for this tracking feature)
-  if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
-    const token = authHeader.slice(7).trim();
-    const decoded = jwt.decode(token);
-
-    if (decoded && typeof decoded === 'object') {
-      const obj = decoded as Record<string, unknown>;
-      const candidates = ['id', 'userId', '_id', 'sub'];
-      for (const key of candidates) {
-        const val = obj[key];
-        if (typeof val === 'string' && val.trim().length > 0) return val.trim();
-      }
-    }
-  }
-
-  return null;
-}
-
 async function getUserSnapshot(accountId: string): Promise<{ username: string; avatar: string; metaTier: number } | null> {
   // If accountId is a Mongo ObjectId (24 hex), try to load the user.
   if (!/^[a-fA-F0-9]{24}$/.test(accountId)) return null;
@@ -142,14 +111,8 @@ function buildRankKeyFromEntry(entry: {
 
 export const startCampaign: RequestHandler = async (req, res, next) => {
   try {
-    const body = req.body as CampaignStartBody;
-
-    const authHeader = req.header('authorization') ?? req.header('Authorization');
-    const accountId = resolveAccountId(req.body as unknown, authHeader ?? undefined) ?? req.header('x-account-id') ?? req.header('x-user-id') ?? null;
-
-    if (!accountId) {
-      throw new HttpError(400, 'Missing ACCOUNT_ID (or Authorization Bearer token)');
-    }
+    const accountId = authenticatedAccountId(req);
+    if (req.body.ACCOUNT_ID && req.body.ACCOUNT_ID !== accountId) throw new HttpError(403, 'Account mismatch');
 
     const snapshot = await getUserSnapshot(accountId);
 
@@ -181,8 +144,7 @@ async function upsertAttemptAndBumpCounts(args: {
   outcome: Outcome;
   movesUsedRaw: number;
   abortReason?: CampaignLevelAbortBody['ABORT_REASON'];
-}): Promise<{ attempt: ICampaignAttempt; didMutateCounts: boolean; countsDelta: { wins: number; losses: number } }>
-{
+}): Promise<{ attempt: ICampaignAttempt; didMutateCounts: boolean; countsDelta: { wins: number; losses: number } }> {
   const moveBudget = getMoveBudget(args.levelIndex);
   const movesCounted = computeMovesCounted(args.outcome, args.movesUsedRaw, moveBudget);
   const ratio = computeRatio(movesCounted, moveBudget);
@@ -260,7 +222,15 @@ async function upsertAttemptAndBumpCounts(args: {
 }
 
 async function maybeFinalizeCampaignAndUpdateLeaderboard(args: {
-  run: { accountId: string; campaignId: string; metaTier: number; winsCount: number; lossesCount: number; finishedAt?: Date | null; runId?: string | null };
+  run: {
+    accountId: string;
+    campaignId: string;
+    metaTier: number;
+    winsCount: number;
+    lossesCount: number;
+    finishedAt?: Date | null;
+    runId?: string | null;
+  };
   levelIndex: number;
   outcome: Outcome;
 }): Promise<null | {
@@ -376,7 +346,7 @@ export const levelEnd: RequestHandler = async (req, res, next) => {
   try {
     const body = req.body as CampaignLevelEndBody;
 
-    const run = await CampaignRun.findOne({ campaignId: body.CAMPAIGN_ID });
+    const run = await CampaignRun.findOne({ campaignId: body.CAMPAIGN_ID, accountId: authenticatedAccountId(req) });
     if (!run) throw new HttpError(404, 'CAMPAIGN_ID not found');
 
     if (run.finishedAt) {
@@ -428,7 +398,7 @@ export const levelAbort: RequestHandler = async (req, res, next) => {
   try {
     const body = req.body as CampaignLevelAbortBody;
 
-    const run = await CampaignRun.findOne({ campaignId: body.CAMPAIGN_ID });
+    const run = await CampaignRun.findOne({ campaignId: body.CAMPAIGN_ID, accountId: authenticatedAccountId(req) });
     if (!run) throw new HttpError(404, 'CAMPAIGN_ID not found');
 
     if (run.finishedAt) {
