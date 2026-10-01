@@ -15,6 +15,14 @@ A TypeScript and Express backend for a browser-based Match-3 game, built around 
 - **Verified authentication and session lifecycle** using short-lived JWT access tokens, opaque refresh tokens, HttpOnly cookies, rotation and revocation
 - **Production-oriented deployment** with environment validation, readiness and health checks, MongoDB Atlas, Render and a same-origin API path for reliable browser sessions
 
+## My Work
+
+The original project was created in a two-person team, with my primary responsibility centered on the frontend and gameplay systems.
+
+I later evolved the portfolio version independently across frontend and backend integration. My work on the current backend includes authentication and session reliability, server-authoritative gameplay flows, transactional persistence, operation-receipt recovery, campaign and leaderboard consolidation, production configuration, Atlas and Render deployment, and live debugging across API, database, cookie, CORS and browser boundaries.
+
+The recurring engineering question was simple: **which part of the system should own the truth, and how do we keep that truth consistent when requests fail or arrive twice?**
+
 ## Why the Backend Is More Than CRUD
 
 A gameplay result can affect several pieces of persistent state at once. A win may update campaign progress, score, experience, inventory, statistics and leaderboard state.
@@ -59,14 +67,6 @@ Regular account campaigns contain **11 sequential stages**.
 A successful Stage 11 completion creates the finalized campaign result used by the leaderboard. Each account has one canonical best-result projection, while Stage 12 remains an optional sandbox outside the finalized campaign result.
 
 This keeps campaign progress, gameplay score and public ranking from becoming competing sources of truth.
-
-## My Work
-
-The original project was created in a two-person team, with my primary responsibility centered on the frontend and gameplay systems.
-
-I later evolved the portfolio version independently across frontend and backend integration. My work on the current backend includes authentication and session reliability, server-authoritative gameplay flows, transactional persistence, operation-receipt recovery, campaign and leaderboard consolidation, production configuration, Atlas and Render deployment, and live debugging across API, database, cookie, CORS and browser boundaries.
-
-The recurring engineering question was simple: **which part of the system should own the truth, and how do we keep that truth consistent when requests fail or arrive twice?**
 
 ## Tech Stack
 
