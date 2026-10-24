@@ -55,7 +55,7 @@
   },
   "homepage": "https://github.com/jan-ninh/match3-backend#readme",
   "engines": {
-    "node": ">=22.18.0 <23"
+    "node": ">=22.23.4 <23"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
