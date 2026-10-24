@@ -14,7 +14,7 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization'],
   }),
 );
-app.use(express.json({ limit: '64kb' }));
+app.use(express.json({ limit: '64kb', inflate: false }));
 app.use(routes);
 app.use(notFoundHandler);
 app.use(errorHandler);
